@@ -1,1 +1,1 @@
-# SpecialNotQuasiNotRandomStructures
+# Finding Generators
