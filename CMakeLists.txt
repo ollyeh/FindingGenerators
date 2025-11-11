@@ -14,9 +14,22 @@ execute_process(
 set(pybind11_DIR ${PYBIND11_CMAKE_DIR})
 
 message(STATUS "Using pybind11 found at: ${pybind11_DIR}")
-
 add_subdirectory(pybind11)
-pybind11_add_module(fg SHARED main.cpp)
+
+# Easy3D
+set(EASY3D_DIR "${CMAKE_SOURCE_DIR}/Easy3D")
+message(STATUS "Using Easy3D found at: ${EASY3D_DIR}")
+add_subdirectory(${EASY3D_DIR})
+
+pybind11_add_module(finding_generators SHARED main.cpp)
+
+target_link_libraries(finding_generators
+        PUBLIC
+        easy3d::core
+        easy3d::renderer
+        easy3d::viewer
+        easy3d::gui
+)
 
 set(INIT_PY "${CMAKE_SOURCE_DIR}/package/__init__.py")
 if(NOT EXISTS ${INIT_PY})
@@ -24,10 +37,10 @@ if(NOT EXISTS ${INIT_PY})
 endif()
 
 add_custom_command(
-        TARGET fg
+        TARGET finding_generators
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/package
         COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:fg>
+        $<TARGET_FILE:finding_generators>
         ${CMAKE_SOURCE_DIR}/package/
 )
