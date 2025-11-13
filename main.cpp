@@ -122,23 +122,121 @@ public:
     }
 };
 
+class Agent {
+    int m_state = 0;
+
+    public:
+    std::vector<int> *neighbors_ptr;
+
+    Agent(std::vector<int> *neighbors_ptr) {
+        this -> neighbors_ptr = neighbors_ptr;
+    }
+    void reset() {
+        m_state = 0;//so 0 maps to init element before doping
+    }
+    void infect() {
+        m_state = 1;
+    }
+    int get_status() {
+        if (m_state == 1) {
+            //reset();
+        }
+        return m_state;
+    }
+};
+
+class Grid {
+    inline static thread_local std::default_random_engine m_generator;
+    inline static std::uniform_int_distribution<int> m_uniform_int_distribution;
+    std::vector<std::unique_ptr<Agent>> m_agent_unique_ptrs;
+
+public:
+    explicit Grid(std::vector<int> *to_infect, std::map<int, std::vector<int>> *neighbor_dict_ptr) {
+        // to infect has size 0
+        std::cout << "Preparation..." << std::endl;
+        m_agent_unique_ptrs.resize(neighbor_dict_ptr->size());
+        for (int i = 0; i < neighbor_dict_ptr->size(); i++) {
+            m_agent_unique_ptrs[i] = std::make_unique<Agent>(&neighbor_dict_ptr->at(i));
+            // if agent is in to_infect vector
+            if (std::find(to_infect->begin(), to_infect->end(), i) != to_infect->end()) {
+                m_agent_unique_ptrs[i]->infect();
+                std::cout << "Infecting agent "<< i << std::endl;
+            }
+            else {
+                m_agent_unique_ptrs[i]->reset();
+            }
+        }
+    }
+
+    void update_simulation() {
+        std::vector<int> agents_to_infect = {};
+
+        for (int i = 0; i < m_agent_unique_ptrs.size(); i++) {
+            // check if the current agent i is susceptible to the virus
+            //std::cout << agent_infected << std::endl;
+            bool const agent_infected = (m_agent_unique_ptrs[i]->get_status() == 1);
+
+            // reference to neighbors_ptr
+            auto &neighbors_ptr = m_agent_unique_ptrs[i]->neighbors_ptr;
+            std::uniform_int_distribution<int> m_uniform_int_distribution(0, neighbors_ptr->size()-1);
+
+            // pick a random neighbor from neighbors_ptr's vector that is not in temp
+            int random_neighbor_index = m_uniform_int_distribution(m_generator);
+            //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
+
+            //chose random neighbor of agent i and check if susceptible
+            int random_neighbor = neighbors_ptr->at(random_neighbor_index);
+
+            if (agent_infected and m_agent_unique_ptrs.at(random_neighbor)->get_status() == 0 and agents_to_infect.end() == std::find(agents_to_infect.begin(), agents_to_infect.end(), random_neighbor)) {
+                agents_to_infect.push_back(random_neighbor);
+            }
+            std::cout << "Next step we'll infect: " << agents_to_infect.size() << std::endl;
+        }
+
+        // check that agents_to_infect matches *to_infect->size()
+        // think of a way of preventing the annihilation of infectious states
+        // with the current logic infectious states are annihilating themselves, only one will remain after many simulation steps
+
+        // agents have to share their next step, if it is the same agent, choose again
+
+        for (int i = 0; i < m_agent_unique_ptrs.size(); i++) {
+            bool const agent_in_agents_to_infect = agents_to_infect.end() != std::find(agents_to_infect.begin(), agents_to_infect.end(), i);
+            bool const agent_infected = (m_agent_unique_ptrs[i]->get_status() == 1);
+            if (agent_in_agents_to_infect) {
+                //std::cout << "Agent " << i << " is infected right now." << std::endl;
+                m_agent_unique_ptrs[i]->infect();
+            }
+            else if (agent_infected) {
+                m_agent_unique_ptrs[i]->reset();
+                //std::cout << "Agent " << i << " is reset right now." << std::endl;
+            }
+        }
+    }
+};
+
+
 class CellOperator {
     inline static thread_local std::default_random_engine m_generator;
     std::vector<int> m_picked_swaps;
+    std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict_init;
     std::map<int, std::pair<std::string, std::array<float, 3>>> *m_ptr_structure_dict;
+    std::map<int, std::vector<int>> *m_ptr_neighbor_dict;
 
     public:
-    CellOperator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr) {
+    CellOperator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, std::map<int, std::vector<int>> *neighbor_dict_ptr) {
+        this -> m_structure_dict_init = *structure_dict_ptr;
         this ->m_ptr_structure_dict = structure_dict_ptr;
+        this ->m_ptr_neighbor_dict = neighbor_dict_ptr;
     }
-
+    //highly problematic, copy the dict and dope the copy
+    //we need the undoped dict for the virus simulation
     void dope_cell(int n_swaps, std::string element) {
         std::uniform_int_distribution<int> m_uniform_int_distribution(0, m_ptr_structure_dict->size()-1);
         if (n_swaps >= m_ptr_structure_dict->size()) {
             throw std::invalid_argument("n_swaps must not be >= than the number of atoms! Don't be lazy and build the pure cell yourself...");
             }
         std::cout << "Swapping atoms" << std::endl;
-        for (int i = 0; m_picked_swaps.size() < n_swaps or i>100; i++) {
+        for (int i = 0; m_picked_swaps.size() < n_swaps; i++) {
             int temp = m_uniform_int_distribution(m_generator);
             //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
             if (m_picked_swaps.end() == std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) {
@@ -151,20 +249,38 @@ class CellOperator {
         }
         std::cout << "with " << element << "..." << std::endl;
     }
+
+    void prepare_simulation() {
+        // to_indext = picked_swaps
+        std::cout << m_picked_swaps.size() << std::endl;
+        auto grid = Grid(&m_picked_swaps, m_ptr_neighbor_dict);
+        for (int i = 0; i < 200; i++) {
+            std::cout << "Simulation step: " << i << std::endl;
+            grid.update_simulation();
+        }
+
+
+
+        // initialize the simulation grid with to_infect and pointers to index of structure_dict or neighbor_dict
+        //
+    }
 };
 
 class Framework {
     std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict;
+    std::map<int, std::vector<int>> m_neighbor_dict;
+
 
     CellOperator m_cell_operator;
     CellViewer m_cell_viewer;
 
     public:
-    py::dict python_dict;
+    py::dict python_structure_dict;
+    py::dict python_neighbor_dict;
     // pass the address of the map to the individual objects
     // the map is still owned by Framework
-    Framework(const py::dict &structure_dict, const py::kwargs& kwargs)
-        : m_cell_operator(&m_structure_dict), m_cell_viewer(&m_structure_dict)
+    Framework(const py::dict &structure_dict, const py::dict &neighbor_dict, const py::kwargs& kwargs)
+        : m_cell_operator(&m_structure_dict, &m_neighbor_dict), m_cell_viewer(&m_structure_dict)
     {
         if (not kwargs.contains("crystal_system")) {
             throw std::invalid_argument("Specify keyword argument 'crystal_system'!");
@@ -172,16 +288,21 @@ class Framework {
         if (kwargs.contains("crystal_system") and kwargs["crystal_system"].cast<std::string>() != "cubic") {
             throw std::invalid_argument("Crystal system must be a cubic!");
         }
-        python_dict = structure_dict;
-        parse_dict();
+        python_structure_dict = structure_dict;
+        python_neighbor_dict = neighbor_dict;
+        parse_dicts();
     }
 
-    void parse_dict() {
+    void parse_dicts() {
         // look for general, crystal structure = cubic, if not: break
         // parse atoms into map key: (atom_index, element), value: array[3] of fractional coords
         //map will be used later
-        for (auto item : python_dict) {
-            m_structure_dict[item.first.cast<int>()] = {item.second["element"].cast<std::string>(), item.second["frac_coord"].cast<std::array<float, 3>>()};
+
+        for (auto const& [key, val] : python_structure_dict) {
+            m_structure_dict[key.cast<int>()] = {val["element"].cast<std::string>(), val["frac_coord"].cast<std::array<float, 3>>()};
+        }
+        for (auto const& [key, val] : python_neighbor_dict) {
+            m_neighbor_dict[key.cast<int>()] = {val.cast<std::vector<int>>()};
         }
     }
 
@@ -196,13 +317,18 @@ class Framework {
     void close_viewer() {
         m_cell_viewer.close_viewer();
     }
+
+    void prepare_simulation() {
+        m_cell_operator.prepare_simulation();
+    }
 };
 
 PYBIND11_MODULE(finding_generators, m) {
     m.doc() = "Python bindings for functions in Python";
     py::class_<Framework>(m, "Framework")
-    .def(py::init<py::dict, py::kwargs>())
+    .def(py::init<py::dict, py::dict, py::kwargs>())
     .def("dope_cell", &Framework::dope_cell)
     .def("display_cell", &Framework::display_cell)
-    .def("close_viewer", &Framework::close_viewer);
+    .def("close_viewer", &Framework::close_viewer)
+    .def("prepare_simulation", &Framework::prepare_simulation);
 }
