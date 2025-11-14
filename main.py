@@ -1,3 +1,5 @@
+import time
+
 from pymatgen.io.cif import CifParser
 from pymatgen.analysis.local_env import VoronoiNN, get_neighbors_of_site_with_index
 from package import finding_generators as fg
@@ -21,7 +23,7 @@ neighbor_dict = {}
 
 neighbor_dict = {int(key): val for (key, val) in zip(neighbor_dict.keys(), neighbor_dict.values())}
 
-for i, site in enumerate(rescaled_structure := structures[0]*(2,2,2)):
+for i, site in enumerate(rescaled_structure := structures[0]*(3,3,3)):
     site = site.as_dict()
     structure_dict[i] = {}
 
@@ -47,7 +49,8 @@ structure_dict[i] = {"element": site["species"][0]["element"], "frac_coord": sit
 print(neighbor_dict)
 
 framework = fg.Framework(structure_dict, neighbor_dict, crystal_system="cubic")
-framework.dope_cell(3, "Sc")
-framework.prepare_simulation()
+framework.dope_cell(2, "Sc")
 #framework.display_cell()
+#framework.display_cell()
+framework.run_simulation(True)
 #framework.dope_cell(4, "Sc")

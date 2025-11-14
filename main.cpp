@@ -14,13 +14,16 @@
 #include <easy3d/renderer/drawable_lines.h>
 #include <easy3d/viewer/viewer.h>
 #include <thread>
+#include <queue>
+#include <future>
 #include <cstdlib>
-
+#include <ranges>
 #include "easy3d/core/point_cloud.h"
-#include "easy3d/core/random.h"
 #include "easy3d/renderer/drawable_points.h"
 #include "easy3d/renderer/renderer.h"
+#include <easy3d/util/logging.h>
 
+#include "thread_pool.hpp"
 
 namespace py = pybind11;
 
@@ -35,9 +38,11 @@ class CellViewer {
     std::vector<easy3d::vec3> m_atomic_positions;
     std::map<int, std::pair<std::string, std::array<float, 3>>> *m_ptr_structure_dict;
     std::map<std::string, easy3d::vec3> m_unique_element_colors;
+    easy3d::PointCloud m_atoms;
 
 public:
     easy3d::Viewer viewer;
+
     CellViewer(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr) {
         this ->m_ptr_structure_dict = structure_dict_ptr;
     }
@@ -61,7 +66,6 @@ public:
 
     void open_viewer() {
         viewer.resize(100, 100);
-        easy3d::PointCloud m_atoms;
         auto colors = m_atoms.add_vertex_property<easy3d::vec3>("v:color");  // create vertex color property
 
         pick_colors();
@@ -116,6 +120,14 @@ public:
         viewer.run();
         viewer.exit();
     }
+    /*
+    void update_colors() {
+        auto vertices = m_atoms.get_vertex_property<std::vector<easy3d::vec3>>("v:color");
+        for (int i = 0; i < m_ptr_structure_dict->size(); i++) {
+            auto &entry = m_ptr_structure_dict->at(i);
+            colors[] = m_unique_element_colors[entry.first];
+    }
+    */
 
     void close_viewer() {
         viewer.exit();
@@ -137,6 +149,7 @@ class Agent {
     void infect() {
         m_state = 1;
     }
+
     int get_status() {
         if (m_state == 1) {
             //reset();
@@ -148,22 +161,33 @@ class Agent {
 class Grid {
     inline static thread_local std::default_random_engine m_generator;
     inline static std::uniform_int_distribution<int> m_uniform_int_distribution;
-    std::vector<std::unique_ptr<Agent>> m_agent_unique_ptrs;
+    std::map<int, std::vector<int>> *neighbor_dict_ptr;
+    std::vector<int> *m_to_infect_ptr {};
 
 public:
-    explicit Grid(std::vector<int> *to_infect, std::map<int, std::vector<int>> *neighbor_dict_ptr) {
+    std::map<int, std::unique_ptr<Agent>> agent_unique_ptrs;
+    explicit Grid(std::map<int, std::vector<int>> *neighbor_dict_ptr) {
         // to infect has size 0
+        this -> neighbor_dict_ptr = neighbor_dict_ptr;
+    }
+
+    const std::map<int, std::unique_ptr<Agent>> &get_agent_unique_ptrs() const {
+        //return a const ref to the vector of unique ptrs
+        return agent_unique_ptrs;
+    }
+
+    void init_simulation (std::vector<int> *to_infect_ptr) {
+        m_to_infect_ptr = to_infect_ptr;
         std::cout << "Preparation..." << std::endl;
-        m_agent_unique_ptrs.resize(neighbor_dict_ptr->size());
         for (int i = 0; i < neighbor_dict_ptr->size(); i++) {
-            m_agent_unique_ptrs[i] = std::make_unique<Agent>(&neighbor_dict_ptr->at(i));
+            agent_unique_ptrs[i] = std::make_unique<Agent>(&neighbor_dict_ptr->at(i));
             // if agent is in to_infect vector
-            if (std::find(to_infect->begin(), to_infect->end(), i) != to_infect->end()) {
-                m_agent_unique_ptrs[i]->infect();
+            if (std::find(to_infect_ptr->begin(), to_infect_ptr->end(), i) != to_infect_ptr->end()) {
+                agent_unique_ptrs[i]->infect();
                 std::cout << "Infecting agent "<< i << std::endl;
             }
             else {
-                m_agent_unique_ptrs[i]->reset();
+                agent_unique_ptrs[i]->reset();
             }
         }
     }
@@ -171,13 +195,13 @@ public:
     void update_simulation() {
         std::vector<int> agents_to_infect = {};
 
-        for (int i = 0; i < m_agent_unique_ptrs.size(); i++) {
+        for (int i = 0; i < agent_unique_ptrs.size(); i++) {
             // check if the current agent i is susceptible to the virus
             //std::cout << agent_infected << std::endl;
-            bool const agent_infected = (m_agent_unique_ptrs[i]->get_status() == 1);
+            bool const agent_infected = (agent_unique_ptrs[i]->get_status() == 1);
 
             // reference to neighbors_ptr
-            auto &neighbors_ptr = m_agent_unique_ptrs[i]->neighbors_ptr;
+            auto &neighbors_ptr = agent_unique_ptrs[i]->neighbors_ptr;
             std::uniform_int_distribution<int> m_uniform_int_distribution(0, neighbors_ptr->size()-1);
 
             // pick a random neighbor from neighbors_ptr's vector that is not in temp
@@ -187,9 +211,13 @@ public:
             //chose random neighbor of agent i and check if susceptible
             int random_neighbor = neighbors_ptr->at(random_neighbor_index);
 
-            if (agent_infected and m_agent_unique_ptrs.at(random_neighbor)->get_status() == 0 and agents_to_infect.end() == std::find(agents_to_infect.begin(), agents_to_infect.end(), random_neighbor)) {
+            if (agent_infected and agent_unique_ptrs.at(random_neighbor)->get_status() == 0 and agents_to_infect.end() == std::find(agents_to_infect.begin(), agents_to_infect.end(), random_neighbor)) {
                 agents_to_infect.push_back(random_neighbor);
             }
+
+            //if (agents_to_infect.size() < m_to_infect_ptr->size()) {
+            //    throw std::invalid_argument("Simulation broke");
+            //}
             std::cout << "Next step we'll infect: " << agents_to_infect.size() << std::endl;
         }
 
@@ -199,15 +227,15 @@ public:
 
         // agents have to share their next step, if it is the same agent, choose again
 
-        for (int i = 0; i < m_agent_unique_ptrs.size(); i++) {
+        for (int i = 0; i < agent_unique_ptrs.size(); i++) {
             bool const agent_in_agents_to_infect = agents_to_infect.end() != std::find(agents_to_infect.begin(), agents_to_infect.end(), i);
-            bool const agent_infected = (m_agent_unique_ptrs[i]->get_status() == 1);
+            bool const agent_infected = (agent_unique_ptrs[i]->get_status() == 1);
             if (agent_in_agents_to_infect) {
                 //std::cout << "Agent " << i << " is infected right now." << std::endl;
-                m_agent_unique_ptrs[i]->infect();
+                agent_unique_ptrs[i]->infect();
             }
             else if (agent_infected) {
-                m_agent_unique_ptrs[i]->reset();
+                agent_unique_ptrs[i]->reset();
                 //std::cout << "Agent " << i << " is reset right now." << std::endl;
             }
         }
@@ -218,19 +246,30 @@ public:
 class CellOperator {
     inline static thread_local std::default_random_engine m_generator;
     std::vector<int> m_picked_swaps;
-    std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict_init;
     std::map<int, std::pair<std::string, std::array<float, 3>>> *m_ptr_structure_dict;
+    std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict_init;
     std::map<int, std::vector<int>> *m_ptr_neighbor_dict;
+    Grid m_grid;
+    std::vector<std::unique_ptr<Agent>> m_agent_unique_ptrs;
+    std::string m_element;
 
     public:
-    CellOperator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, std::map<int, std::vector<int>> *neighbor_dict_ptr) {
-        this -> m_structure_dict_init = *structure_dict_ptr;
-        this ->m_ptr_structure_dict = structure_dict_ptr;
-        this ->m_ptr_neighbor_dict = neighbor_dict_ptr;
+    CellOperator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, std::map<int, std::vector<int>> *neighbor_dict_ptr)
+        :  m_ptr_structure_dict(structure_dict_ptr), m_ptr_neighbor_dict(neighbor_dict_ptr), m_grid(m_ptr_neighbor_dict)
+    {
+        std::cout << m_structure_dict_init.size() << std::endl;
     }
     //highly problematic, copy the dict and dope the copy
     //we need the undoped dict for the virus simulation
+
+    void backup_dict() {
+        m_structure_dict_init = *m_ptr_structure_dict;
+        std::cout << "Copying structure dict..." << std::endl;
+    }
+
     void dope_cell(int n_swaps, std::string element) {
+        this->m_element = element;
+
         std::uniform_int_distribution<int> m_uniform_int_distribution(0, m_ptr_structure_dict->size()-1);
         if (n_swaps >= m_ptr_structure_dict->size()) {
             throw std::invalid_argument("n_swaps must not be >= than the number of atoms! Don't be lazy and build the pure cell yourself...");
@@ -248,16 +287,43 @@ class CellOperator {
             std::cout << index << " ";
         }
         std::cout << "with " << element << "..." << std::endl;
+        m_grid.init_simulation(&m_picked_swaps);
     }
 
-    void prepare_simulation() {
+    void update_m_structure_dict() {
+        auto &unique_ptrs = m_grid.get_agent_unique_ptrs();
+        for (const auto& [key, val] : *m_ptr_structure_dict) {
+            int status = unique_ptrs.at(key)->get_status();
+            std::cout << "status: " << status << std::endl;
+
+            if (status == 0) {
+                //here is a mistake!!!!
+                m_ptr_structure_dict->at(key).first = m_structure_dict_init.at(key).first;
+                std::cout << "Agent " << key << "becomes " << m_ptr_structure_dict->at(key).first << std::endl;
+            }
+            else if (status == 1) {
+                m_ptr_structure_dict->at(key).first = m_element;
+            }
+            else {
+                std::cout << "Unknown agent status: " << status << std::endl;
+            }
+
+        }
+    }
+
+    void run_simulation() {
         // to_indext = picked_swaps
         std::cout << m_picked_swaps.size() << std::endl;
-        auto grid = Grid(&m_picked_swaps, m_ptr_neighbor_dict);
-        for (int i = 0; i < 200; i++) {
+        for (int i = 0; i < 9000; i++) {
             std::cout << "Simulation step: " << i << std::endl;
-            grid.update_simulation();
+            m_grid.update_simulation();
+            //update_m_structure_dict();
+
+            // update m_structure_dict using its ptr
+            // iterate over agent states and if state=0 take element from m_structure_dict_init
+            // if state=1 take dopant element
         }
+
 
 
 
@@ -275,6 +341,9 @@ class Framework {
     CellViewer m_cell_viewer;
 
     public:
+    ThreadPool thread_pool{1};
+    std::queue<std::future<void>> results;
+
     py::dict python_structure_dict;
     py::dict python_neighbor_dict;
     // pass the address of the map to the individual objects
@@ -291,6 +360,7 @@ class Framework {
         python_structure_dict = structure_dict;
         python_neighbor_dict = neighbor_dict;
         parse_dicts();
+        m_cell_operator.backup_dict();
     }
 
     void parse_dicts() {
@@ -318,8 +388,13 @@ class Framework {
         m_cell_viewer.close_viewer();
     }
 
-    void prepare_simulation() {
-        m_cell_operator.prepare_simulation();
+    void run_simulation(bool show) {
+        results.emplace(thread_pool.AddTask([this]() { this->m_cell_operator.run_simulation(); }));
+        if (show) {
+            m_cell_viewer.open_viewer();
+        }
+
+        //m_cell_operator.run_simulation();
     }
 };
 
@@ -330,5 +405,5 @@ PYBIND11_MODULE(finding_generators, m) {
     .def("dope_cell", &Framework::dope_cell)
     .def("display_cell", &Framework::display_cell)
     .def("close_viewer", &Framework::close_viewer)
-    .def("prepare_simulation", &Framework::prepare_simulation);
+    .def("run_simulation", &Framework::run_simulation);
 }
