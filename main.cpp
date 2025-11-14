@@ -1,7 +1,7 @@
 #include <iostream>
 #include <memory>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+#include <chrono>
+
 #include <map>
 #include <set>
 #include <array>
@@ -10,22 +10,28 @@
 #include <stdexcept>
 #include <random>
 #include <algorithm>
+
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
 #include <easy3d/renderer/drawable.h>
 #include <easy3d/renderer/drawable_lines.h>
 #include <easy3d/viewer/viewer.h>
-#include <thread>
-#include <queue>
-#include <future>
-#include <cstdlib>
-#include <ranges>
 #include "easy3d/core/point_cloud.h"
 #include "easy3d/renderer/drawable_points.h"
 #include "easy3d/renderer/renderer.h"
-#include <easy3d/util/logging.h>
+
+#include <queue>
+#include <future>
+#include <ranges>
+
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 #include "thread_pool.hpp"
 
 namespace py = pybind11;
+namespace spd = spdlog;
 
 std::map<std::string, easy3d::vec3> colors = {
     {"Al", easy3d::vec3(1.0f, 0.0f, 0.0f)},
@@ -65,6 +71,7 @@ public:
     }
 
     void initialize_viewer() {
+        spd::default_logger()->log(spd::level::info, "Initializing viewer");
         viewer.resize(800, 800);
         auto colors = m_atoms.add_vertex_property<easy3d::vec3>("v:color");  // create vertex color property
 
@@ -80,8 +87,6 @@ public:
         auto drawable = m_atoms.renderer()->get_points_drawable("vertices");
         drawable->set_impostor_type(easy3d::PointsDrawable::SPHERE);
         drawable->set_point_size(50);
-
-
 
         // Compute the bounding box.
         auto bbox_drawable = new easy3d::LinesDrawable("bbox");
@@ -132,10 +137,19 @@ public:
         viewer.exit();
     }
 
-    void update() {
-        std::cout << "updating" << std::endl;
+    void update_color_buffer() {
+        size_t index = 0;
+        auto drawable = m_atoms.renderer()->get_points_drawable("vertices");
+        auto colors = m_atoms.vertex_property<easy3d::vec3>("v:color");
+        for (auto vertex : m_atoms.vertices()) {
+            auto &entry = m_ptr_structure_dict->at(index);
+            colors[vertex] = m_unique_element_colors[entry.first];
+            ++index;
+        }
+        spd::info("Updating color buffer");
+        drawable->set_coloring(easy3d::State::COLOR_PROPERTY, easy3d::State::VERTEX, "v:color");
+        drawable->update();
     }
-
 };
 
 class Agent {
@@ -182,13 +196,13 @@ public:
 
     void init_simulation (std::vector<int> *to_infect_ptr) {
         m_to_infect_ptr = to_infect_ptr;
-        std::cout << "Preparation..." << std::endl;
+        spd::info("Initializing simulation");
         for (int i = 0; i < neighbor_dict_ptr->size(); i++) {
             agent_unique_ptrs[i] = std::make_unique<Agent>(&neighbor_dict_ptr->at(i));
             // if agent is in to_infect vector
             if (std::find(to_infect_ptr->begin(), to_infect_ptr->end(), i) != to_infect_ptr->end()) {
                 agent_unique_ptrs[i]->infect();
-                std::cout << "Infecting agent "<< i << std::endl;
+                //spd::default_logger()->log(spd::level::debug, std::format("Infecting agent {}", i));
             }
             else {
                 agent_unique_ptrs[i]->reset();
@@ -224,6 +238,7 @@ public:
             //}
             //std::cout << "Next step we'll infect: " << agents_to_infect.size() << std::endl;
         }
+        spd::info("Infecting {} next...", agents_to_infect.size());
 
         // check that agents_to_infect matches *to_infect->size()
         // think of a way of preventing the annihilation of infectious states
@@ -243,7 +258,11 @@ public:
                 //std::cout << "Agent " << i << " is reset right now." << std::endl;
             }
         }
-        ptr_cell_viewer->update();
+        ptr_cell_viewer->update_color_buffer();
+        ptr_cell_viewer->viewer.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+
     }
 };
 
@@ -262,14 +281,13 @@ class CellOperator {
     CellOperator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, std::map<int, std::vector<int>> *neighbor_dict_ptr)
         :  m_ptr_structure_dict(structure_dict_ptr), m_ptr_neighbor_dict(neighbor_dict_ptr), m_grid(m_ptr_neighbor_dict)
     {
-        std::cout << m_structure_dict_init.size() << std::endl;
     }
     //highly problematic, copy the dict and dope the copy
     //we need the undoped dict for the virus simulation
 
     void backup_dict() {
         m_structure_dict_init = *m_ptr_structure_dict;
-        std::cout << "Copying structure dict..." << std::endl;
+        spd::info("Copying structure dict");
     }
 
     void dope_cell(int n_swaps, std::string element) {
@@ -279,7 +297,7 @@ class CellOperator {
         if (n_swaps >= m_ptr_structure_dict->size()) {
             throw std::invalid_argument("n_swaps must not be >= than the number of atoms! Don't be lazy and build the pure cell yourself...");
             }
-        std::cout  << "Swapping atoms" << std::endl;
+        spd::info("Swapping atoms");
         for (int i = 0; m_picked_swaps.size() < n_swaps; i++) {
             int temp = m_uniform_int_distribution(m_generator);
             //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
@@ -289,9 +307,7 @@ class CellOperator {
             }
         for (int index : m_picked_swaps) {
             m_ptr_structure_dict->at(index).first = element;
-            std::cout << index << " ";
         }
-        std::cout << "with " << element << "..." << std::endl;
         m_grid.init_simulation(&m_picked_swaps);
     }
 
@@ -304,13 +320,14 @@ class CellOperator {
             if (status == 0) {
                 //here is a mistake!!!!
                 m_ptr_structure_dict->at(key).first = m_structure_dict_init.at(key).first;
-                std::cout << "Agent " << key << "becomes " << m_ptr_structure_dict->at(key).first << std::endl;
+                spd::debug("Agent {} -> {}", key, m_ptr_structure_dict->at(key).first);
             }
             else if (status == 1) {
                 m_ptr_structure_dict->at(key).first = m_element;
+                spd::debug("Agent {} -> {}", key, m_element);
             }
             else {
-                std::cout << "Unknown agent status: " << status << std::endl;
+                spd::warn("Status for agent {} is unknown.", key);
             }
 
         }
@@ -318,11 +335,10 @@ class CellOperator {
 
     void run_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
         // to_indext = picked_swaps
-        std::cout << m_picked_swaps.size() << std::endl;
-        for (int i = 0; i < 9000; i++) {
-            std::cout << "Simulation step: " << i << std::endl;
+        for (int i = 0; i < 100000; i++) {
+            spd::debug("Simulation step {}", i);
             m_grid.update_simulation(ptr_cell_viewer);
-            //update_m_structure_dict();
+            update_m_structure_dict();
 
             // update m_structure_dict using its ptr
             // iterate over agent states and if state=0 take element from m_structure_dict_init

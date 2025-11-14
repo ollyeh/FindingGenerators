@@ -31,6 +31,16 @@ target_link_libraries(finding_generators
         easy3d::gui
 )
 
+set(SPDLOG_DIR "${CMAKE_SOURCE_DIR}/spdlog")
+message(STATUS "Using spdlog found at: ${SPDLOG_DIR}")
+add_subdirectory(${SPDLOG_DIR})
+
+target_link_libraries(finding_generators
+        PUBLIC
+        spdlog
+)
+
+
 set(INIT_PY "${CMAKE_SOURCE_DIR}/package/__init__.py")
 if(NOT EXISTS ${INIT_PY})
     file(WRITE ${INIT_PY} "")
