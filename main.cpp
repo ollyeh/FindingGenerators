@@ -64,8 +64,8 @@ public:
         }
     }
 
-    void open_viewer() {
-        viewer.resize(100, 100);
+    void initialize_viewer() {
+        viewer.resize(800, 800);
         auto colors = m_atoms.add_vertex_property<easy3d::vec3>("v:color");  // create vertex color property
 
         pick_colors();
@@ -117,8 +117,6 @@ public:
         viewer.add_drawable(std::shared_ptr<easy3d::LinesDrawable>(bbox_drawable));
 
         viewer.fit_screen();
-        viewer.run();
-        viewer.exit();
     }
     /*
     void update_colors() {
@@ -129,9 +127,15 @@ public:
     }
     */
 
-    void close_viewer() {
+    void open_viewer() {
+        viewer.run();
         viewer.exit();
     }
+
+    void update() {
+        std::cout << "updating" << std::endl;
+    }
+
 };
 
 class Agent {
@@ -192,7 +196,7 @@ public:
         }
     }
 
-    void update_simulation() {
+    void update_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
         std::vector<int> agents_to_infect = {};
 
         for (int i = 0; i < agent_unique_ptrs.size(); i++) {
@@ -218,7 +222,7 @@ public:
             //if (agents_to_infect.size() < m_to_infect_ptr->size()) {
             //    throw std::invalid_argument("Simulation broke");
             //}
-            std::cout << "Next step we'll infect: " << agents_to_infect.size() << std::endl;
+            //std::cout << "Next step we'll infect: " << agents_to_infect.size() << std::endl;
         }
 
         // check that agents_to_infect matches *to_infect->size()
@@ -239,6 +243,7 @@ public:
                 //std::cout << "Agent " << i << " is reset right now." << std::endl;
             }
         }
+        ptr_cell_viewer->update();
     }
 };
 
@@ -274,7 +279,7 @@ class CellOperator {
         if (n_swaps >= m_ptr_structure_dict->size()) {
             throw std::invalid_argument("n_swaps must not be >= than the number of atoms! Don't be lazy and build the pure cell yourself...");
             }
-        std::cout << "Swapping atoms" << std::endl;
+        std::cout  << "Swapping atoms" << std::endl;
         for (int i = 0; m_picked_swaps.size() < n_swaps; i++) {
             int temp = m_uniform_int_distribution(m_generator);
             //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
@@ -294,7 +299,7 @@ class CellOperator {
         auto &unique_ptrs = m_grid.get_agent_unique_ptrs();
         for (const auto& [key, val] : *m_ptr_structure_dict) {
             int status = unique_ptrs.at(key)->get_status();
-            std::cout << "status: " << status << std::endl;
+            //std::cout << "status: " << status << std::endl;
 
             if (status == 0) {
                 //here is a mistake!!!!
@@ -311,22 +316,18 @@ class CellOperator {
         }
     }
 
-    void run_simulation() {
+    void run_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
         // to_indext = picked_swaps
         std::cout << m_picked_swaps.size() << std::endl;
         for (int i = 0; i < 9000; i++) {
             std::cout << "Simulation step: " << i << std::endl;
-            m_grid.update_simulation();
+            m_grid.update_simulation(ptr_cell_viewer);
             //update_m_structure_dict();
 
             // update m_structure_dict using its ptr
             // iterate over agent states and if state=0 take element from m_structure_dict_init
             // if state=1 take dopant element
         }
-
-
-
-
         // initialize the simulation grid with to_infect and pointers to index of structure_dict or neighbor_dict
         //
     }
@@ -384,12 +385,10 @@ class Framework {
         m_cell_viewer.open_viewer();
     }
 
-    void close_viewer() {
-        m_cell_viewer.close_viewer();
-    }
-
     void run_simulation(bool show) {
-        results.emplace(thread_pool.AddTask([this]() { this->m_cell_operator.run_simulation(); }));
+        m_cell_viewer.initialize_viewer();
+        auto m_cell_viewer_unique_ptr = std::unique_ptr<CellViewer>(&m_cell_viewer);
+        results.emplace(thread_pool.AddTask([this, &m_cell_viewer_unique_ptr]() { this->m_cell_operator.run_simulation(m_cell_viewer_unique_ptr); }));
         if (show) {
             m_cell_viewer.open_viewer();
         }
@@ -404,6 +403,5 @@ PYBIND11_MODULE(finding_generators, m) {
     .def(py::init<py::dict, py::dict, py::kwargs>())
     .def("dope_cell", &Framework::dope_cell)
     .def("display_cell", &Framework::display_cell)
-    .def("close_viewer", &Framework::close_viewer)
     .def("run_simulation", &Framework::run_simulation);
 }
