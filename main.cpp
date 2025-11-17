@@ -34,6 +34,8 @@
 namespace py = pybind11;
 namespace spd = spdlog;
 
+constexpr bool enable_debug_logging = false;
+
 std::map<std::string, easy3d::vec3> colors = {
     {"Al", easy3d::vec3(1.0f, 0.0f, 0.0f)},
     {"N", easy3d::vec3(0.0f, 1.0f, 0.0f)},
@@ -151,7 +153,9 @@ public:
             colors[vertex] = m_unique_element_colors[entry.first];
             ++index;
         }
-        spd::info("Updating color buffer");
+        if constexpr (enable_debug_logging) {
+            spd::debug("Updating color buffer");
+        }
         drawable->set_coloring(easy3d::State::COLOR_PROPERTY, easy3d::State::VERTEX, "v:color");
         drawable->update();
     }
@@ -227,30 +231,65 @@ public:
 
             // reference to neighbors_ptr
             auto &neighbors_ptr = agent_unique_ptrs[i]->neighbors_ptr;
-            spd::info("Agent {} has {} neighbors", i, neighbors_ptr->size());
+            if constexpr (enable_debug_logging) {
+                spd::debug("Agent {} has {} neighbors", i, neighbors_ptr->size());
+            }
             std::uniform_int_distribution<int> m_uniform_int_distribution(0, neighbors_ptr->size()-1);
             // pick a random neighbor from neighbors_ptr's vector that is not in temp
             int random_neighbor_index = 2;
             bool neighbor_not_susceptible = true;
 
-            for (int j = 0; neighbor_not_susceptible; j++) {
-                spd::info("loop");
-                random_neighbor_index = m_uniform_int_distribution(m_generator);
-                if (agent_unique_ptrs.at(random_neighbor_index)->get_status() == 0) {
-                    neighbor_not_susceptible = false;
+            if (neighbors_ptr->size() != 0) {
+                for (int j = 0; neighbor_not_susceptible and j<neighbor_dict_init.at(i).size(); j++) {
+                    if constexpr (enable_debug_logging) {
+                        spd::debug("loop");
+                    }
+                    random_neighbor_index = m_uniform_int_distribution(m_generator);
+                    if (agent_unique_ptrs.at(random_neighbor_index)->get_status() == 0) {
+                        neighbor_not_susceptible = false;
+                    }
+                }
+
+                if (neighbor_not_susceptible) {
+                    random_neighbor_index = -1;
                 }
             }
-            spd::info("Picked {} as neighbor", random_neighbor_index);
+            else {
+                random_neighbor_index = -1;
+            }
+
+
+            if constexpr (enable_debug_logging) {
+                spd::debug("Picked {} as neighbor", random_neighbor_index);
+            }
 
 
             //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
 
             //chose random neighbor of agent i and check if susceptible
 
-            int random_neighbor = neighbors_ptr->at(random_neighbor_index);
-            if (agent_infected) {
-                spd::info("Infected agent {} has susceptible neighbor {}", i, random_neighbor);
-                (*next_infected_ptr)[i] = random_neighbor;
+            int random_neighbor;
+            if (random_neighbor_index == -1) {
+                if constexpr (enable_debug_logging) {
+                    spd::debug("Received -1");
+                }
+                random_neighbor = i;
+                if (agent_infected) {
+                    (*next_infected_ptr)[i] = random_neighbor;
+                }
+
+            }
+            else {
+                if constexpr (enable_debug_logging) {
+                    spd::debug("Received ! -1");
+                }
+                int random_neighbor = neighbors_ptr->at(random_neighbor_index);
+                if (agent_infected) {
+                    if constexpr (enable_debug_logging) {
+                        spd::debug("Infected agent {} has susceptible neighbor {}", i, random_neighbor);
+                    }
+                    (*next_infected_ptr)[i] = random_neighbor;
+                }
             }
         }
     }
@@ -275,7 +314,9 @@ public:
             auto &vector_ref = (*causes_of_infection_ptr)[neighbor_index];
             if (vector_ref.end() == std::find(vector_ref.begin(), vector_ref.end(), agent_index)) {
                 vector_ref.push_back(agent_index);
-                spd::info("Added {} to have caused infection of neighbor {}, Size: {}", agent_index, neighbor_index, vector_ref.size());
+                if constexpr (enable_debug_logging) {
+                    spd::debug("Added {} to have caused infection of neighbor {}, Size: {}", agent_index, neighbor_index, vector_ref.size());
+                }
             }
         }
     }
@@ -283,7 +324,9 @@ public:
     void map_next_infected_to_hits(std::map<int, int> *hits_ptr, std::map<int, std::vector<int>> *causes_of_infection_ptr) {
         for (auto &[key, val] : *causes_of_infection_ptr) {
             (*hits_ptr)[key] = val.size();
-            spd::info("Number of hits of agent {}: {}", key, hits_ptr->at(key));
+            if constexpr (enable_debug_logging) {
+                spd::debug("Number of hits of agent {}: {}", key, hits_ptr->at(key));
+            }
         }
     }
 
@@ -307,13 +350,19 @@ public:
         auto hits_iterator = hits.begin();
         int it = 0;
         while (std::any_of(hits.begin(), hits.end(), [](auto &key_value_pair) {return key_value_pair.second > 1;})) {
-            spd::info("Iteration {}", it);
+            if constexpr (enable_debug_logging) {
+                spd::debug("Iteration {}", it);
+            }
             for (;hits_iterator != hits.end(); ++hits_iterator) {
                 if (hits_iterator->second > 1) {
-                    spd::info("Collision event at lattice site {}", hits_iterator->first);
+                    if constexpr (enable_debug_logging) {
+                        spd::debug("Collision event at lattice site {}", hits_iterator->first);
+                    }
                     for (auto i : causes_of_infection.at(hits_iterator->first)) {
                         // now remove key in agent i's neighbors vector
-                        spd::info("Removing {} as agent {}'s neighbor", hits_iterator->first, i);
+                        if constexpr (enable_debug_logging) {
+                            spd::debug("Removing {} as agent {}'s neighbor", hits_iterator->first, i);
+                        }
                         auto &ptr_to_neighbors = agent_unique_ptrs.at(i)->neighbors_ptr;
                         ptr_to_neighbors->erase(std::remove(ptr_to_neighbors->begin(), ptr_to_neighbors->end(), hits_iterator->first), ptr_to_neighbors->end());
                     }
@@ -337,7 +386,9 @@ public:
         for (auto &[key, val] : next_infected) {
             next_infected_vector.push_back(val);
         }
-        spd::info("Number of next infections: {}", next_infected_vector.size());
+        if constexpr (enable_debug_logging) {
+            spd::debug("Number of next infections: {}", next_infected_vector.size());
+        }
 
         //agents_to_infect will be known after the collision detection
 
@@ -348,7 +399,7 @@ public:
         update_agent_states(&next_infected_vector);
         ptr_cell_viewer->update_color_buffer();
         ptr_cell_viewer->viewer.update();
-        //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
         // we have to reset the agent's neighbor vectors individually based on the init map
         // Reset each agent's neighbors to the initial neighbors
@@ -412,14 +463,20 @@ class CellOperator {
             if (status == 0) {
                 //here is a mistake!!!!
                 m_ptr_structure_dict->at(key).first = m_structure_dict_init.at(key).first;
-                spd::debug("Agent {} -> {}", key, m_ptr_structure_dict->at(key).first);
+                if constexpr (enable_debug_logging) {
+                    spd::debug("Agent {} -> {}", key, m_ptr_structure_dict->at(key).first);
+                }
             }
             else if (status == 1) {
                 m_ptr_structure_dict->at(key).first = m_element;
-                spd::debug("Agent {} -> {}", key, m_element);
+                if constexpr (enable_debug_logging) {
+                    spd::debug("Agent {} -> {}", key, m_element);
+                }
             }
             else {
-                spd::warn("Status for agent {} is unknown.", key);
+                if constexpr (enable_debug_logging) {
+                    spd::warn("Status for agent {} is unknown.", key);
+                }
             }
 
         }
@@ -432,10 +489,13 @@ class CellOperator {
 
     void run_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
         // to_indext = picked_swaps
-        for (int i = 0; i < 1000; i++) {
-            spd::info("Simulation step {}", i);
+        for (int i = 0; i < 100000; i++) {
+            if (i%1000 == 0) {
+                spd::info("Simulation step {}", i);
+            }
             m_grid.update_simulation(ptr_cell_viewer);
             update_m_structure_dict();
+
 
             // update m_structure_dict using its ptr
             // iterate over agent states and if state=0 take element from m_structure_dict_init
