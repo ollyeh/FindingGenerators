@@ -29,6 +29,7 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 
 #include "thread_pool.hpp"
+#include "3rd_party/nlohmann/json.hpp"
 
 namespace py = pybind11;
 namespace spd = spdlog;
@@ -36,7 +37,11 @@ namespace spd = spdlog;
 std::map<std::string, easy3d::vec3> colors = {
     {"Al", easy3d::vec3(1.0f, 0.0f, 0.0f)},
     {"N", easy3d::vec3(0.0f, 1.0f, 0.0f)},
-    {"Sc", easy3d::vec3(0.0f, 0.0f, 1.0f)}
+    {"Sc", easy3d::vec3(0.0f, 0.0f, 1.0f)},
+    {"O", easy3d::vec3(0.6f, 0.6f, 1.0f)},
+    {"C", easy3d::vec3(1.0f, 0.6f, 0.3f)},
+    {"I", easy3d::vec3(0.8f, 0.3f, 1.0f)},
+    {"Mo", easy3d::vec3(1.0f, 0.7f, 0.2f)},
 };
 
 
@@ -158,9 +163,10 @@ class Agent {
     public:
     std::vector<int> *neighbors_ptr;
 
-    Agent(std::vector<int> *neighbors_ptr) {
+    explicit Agent(std::vector<int> *neighbors_ptr) {
         this -> neighbors_ptr = neighbors_ptr;
     }
+
     void reset() {
         m_state = 0;//so 0 maps to init element before doping
     }
@@ -168,7 +174,7 @@ class Agent {
         m_state = 1;
     }
 
-    int get_status() {
+    int get_status() const {
         if (m_state == 1) {
             //reset();
         }
@@ -180,6 +186,7 @@ class Grid {
     inline static thread_local std::default_random_engine m_generator;
     inline static std::uniform_int_distribution<int> m_uniform_int_distribution;
     std::map<int, std::vector<int>> *neighbor_dict_ptr;
+    std::map<int, std::vector<int>> neighbor_dict_init;
     std::vector<int> *m_to_infect_ptr {};
 
 public:
@@ -195,6 +202,8 @@ public:
     }
 
     void init_simulation (std::vector<int> *to_infect_ptr) {
+        neighbor_dict_init = *neighbor_dict_ptr;
+
         m_to_infect_ptr = to_infect_ptr;
         spd::info("Initializing simulation");
         for (int i = 0; i < neighbor_dict_ptr->size(); i++) {
@@ -210,9 +219,7 @@ public:
         }
     }
 
-    void update_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
-        std::vector<int> agents_to_infect = {};
-
+    void draw_neighbors_to_infect_next(std::map<int, int> *next_infected_ptr) {
         for (int i = 0; i < agent_unique_ptrs.size(); i++) {
             // check if the current agent i is susceptible to the virus
             //std::cout << agent_infected << std::endl;
@@ -220,34 +227,37 @@ public:
 
             // reference to neighbors_ptr
             auto &neighbors_ptr = agent_unique_ptrs[i]->neighbors_ptr;
+            spd::info("Agent {} has {} neighbors", i, neighbors_ptr->size());
             std::uniform_int_distribution<int> m_uniform_int_distribution(0, neighbors_ptr->size()-1);
-
             // pick a random neighbor from neighbors_ptr's vector that is not in temp
-            int random_neighbor_index = m_uniform_int_distribution(m_generator);
+            int random_neighbor_index = 2;
+            bool neighbor_not_susceptible = true;
+
+            for (int j = 0; neighbor_not_susceptible; j++) {
+                spd::info("loop");
+                random_neighbor_index = m_uniform_int_distribution(m_generator);
+                if (agent_unique_ptrs.at(random_neighbor_index)->get_status() == 0) {
+                    neighbor_not_susceptible = false;
+                }
+            }
+            spd::info("Picked {} as neighbor", random_neighbor_index);
+
+
             //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
 
             //chose random neighbor of agent i and check if susceptible
+
             int random_neighbor = neighbors_ptr->at(random_neighbor_index);
-
-            if (agent_infected and agent_unique_ptrs.at(random_neighbor)->get_status() == 0 and agents_to_infect.end() == std::find(agents_to_infect.begin(), agents_to_infect.end(), random_neighbor)) {
-                agents_to_infect.push_back(random_neighbor);
+            if (agent_infected) {
+                spd::info("Infected agent {} has susceptible neighbor {}", i, random_neighbor);
+                (*next_infected_ptr)[i] = random_neighbor;
             }
-
-            //if (agents_to_infect.size() < m_to_infect_ptr->size()) {
-            //    throw std::invalid_argument("Simulation broke");
-            //}
-            //std::cout << "Next step we'll infect: " << agents_to_infect.size() << std::endl;
         }
-        spd::info("Infecting {} next...", agents_to_infect.size());
+    }
 
-        // check that agents_to_infect matches *to_infect->size()
-        // think of a way of preventing the annihilation of infectious states
-        // with the current logic infectious states are annihilating themselves, only one will remain after many simulation steps
-
-        // agents have to share their next step, if it is the same agent, choose again
-
+    void update_agent_states(std::vector<int> *next_infected_ptr) {
         for (int i = 0; i < agent_unique_ptrs.size(); i++) {
-            bool const agent_in_agents_to_infect = agents_to_infect.end() != std::find(agents_to_infect.begin(), agents_to_infect.end(), i);
+            bool const agent_in_agents_to_infect = next_infected_ptr->end() != std::find(next_infected_ptr->begin(), next_infected_ptr->end(), i);
             bool const agent_infected = (agent_unique_ptrs[i]->get_status() == 1);
             if (agent_in_agents_to_infect) {
                 //std::cout << "Agent " << i << " is infected right now." << std::endl;
@@ -258,11 +268,93 @@ public:
                 //std::cout << "Agent " << i << " is reset right now." << std::endl;
             }
         }
+    }
+
+    void map_next_infected_to_causes(std::map<int, int> *next_infected_ptr, std::map<int, std::vector<int>> *causes_of_infection_ptr) {
+        for (auto &[agent_index, neighbor_index] : *next_infected_ptr) {
+            auto &vector_ref = (*causes_of_infection_ptr)[neighbor_index];
+            if (vector_ref.end() == std::find(vector_ref.begin(), vector_ref.end(), agent_index)) {
+                vector_ref.push_back(agent_index);
+                spd::info("Added {} to have caused infection of neighbor {}, Size: {}", agent_index, neighbor_index, vector_ref.size());
+            }
+        }
+    }
+
+    void map_next_infected_to_hits(std::map<int, int> *hits_ptr, std::map<int, std::vector<int>> *causes_of_infection_ptr) {
+        for (auto &[key, val] : *causes_of_infection_ptr) {
+            (*hits_ptr)[key] = val.size();
+            spd::info("Number of hits of agent {}: {}", key, hits_ptr->at(key));
+        }
+    }
+
+    void update_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
+        std::vector<int> next_infected_vector = {};
+        // cause_of_infection maps the next infected agent to the pointers of agent pointers that caused the next infection (one to many)
+        // next_infected maps the infected agent to the next infected agent (one to one)
+        std::map<int, std::vector<int>> causes_of_infection = {};
+        std::map<int, int> next_infected = {};
+        std::map<int, int> hits = {};
+
+        draw_neighbors_to_infect_next(&next_infected);
+        map_next_infected_to_causes(&next_infected, &causes_of_infection);
+        map_next_infected_to_hits(&hits, &causes_of_infection);
+
+        // iterate through hits and if val >1 use key to access val of causes_of_infection
+        // val = vector of agent indices
+        // use these to remove the val of causes_of_infection from almost all neighbor dicts
+
+        // get boolean true if any entry in collisions is set to true
+        auto hits_iterator = hits.begin();
+        int it = 0;
+        while (std::any_of(hits.begin(), hits.end(), [](auto &key_value_pair) {return key_value_pair.second > 1;})) {
+            spd::info("Iteration {}", it);
+            for (;hits_iterator != hits.end(); ++hits_iterator) {
+                if (hits_iterator->second > 1) {
+                    spd::info("Collision event at lattice site {}", hits_iterator->first);
+                    for (auto i : causes_of_infection.at(hits_iterator->first)) {
+                        // now remove key in agent i's neighbors vector
+                        spd::info("Removing {} as agent {}'s neighbor", hits_iterator->first, i);
+                        auto &ptr_to_neighbors = agent_unique_ptrs.at(i)->neighbors_ptr;
+                        ptr_to_neighbors->erase(std::remove(ptr_to_neighbors->begin(), ptr_to_neighbors->end(), hits_iterator->first), ptr_to_neighbors->end());
+                    }
+                }
+                else {}
+            }
+
+            causes_of_infection.clear();
+            next_infected.clear();
+            hits.clear();
+            draw_neighbors_to_infect_next(&next_infected);
+            map_next_infected_to_causes(&next_infected, &causes_of_infection);
+            map_next_infected_to_hits(&hits, &causes_of_infection);
+
+            hits_iterator = hits.begin();
+            ++it;
+        }
+
+        // fill next_infected_vector
+
+        for (auto &[key, val] : next_infected) {
+            next_infected_vector.push_back(val);
+        }
+        spd::info("Number of next infections: {}", next_infected_vector.size());
+
+        //agents_to_infect will be known after the collision detection
+
+        //if (agent_infected) {
+        //    agents_to_infect_next_ptr->push_back(random_neighbor);
+        //    spd::info(agents_to_infect_next_ptr->size());
+        //}
+        update_agent_states(&next_infected_vector);
         ptr_cell_viewer->update_color_buffer();
         ptr_cell_viewer->viewer.update();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        //std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-
+        // we have to reset the agent's neighbor vectors individually based on the init map
+        // Reset each agent's neighbors to the initial neighbors
+        for (auto &[index, agent_ptr] : agent_unique_ptrs) {
+            *(agent_ptr->neighbors_ptr) = neighbor_dict_init[index];
+        }
     }
 };
 
@@ -333,10 +425,15 @@ class CellOperator {
         }
     }
 
+    void get_possibilities() {
+        //int const n_conf
+        //spd::info("Configuration space consists of {} possible configurations.", n_conf);
+    }
+
     void run_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
         // to_indext = picked_swaps
-        for (int i = 0; i < 100000; i++) {
-            spd::debug("Simulation step {}", i);
+        for (int i = 0; i < 1000; i++) {
+            spd::info("Simulation step {}", i);
             m_grid.update_simulation(ptr_cell_viewer);
             update_m_structure_dict();
 
@@ -344,6 +441,7 @@ class CellOperator {
             // iterate over agent states and if state=0 take element from m_structure_dict_init
             // if state=1 take dopant element
         }
+        spd::info("Simulation complete");
         // initialize the simulation grid with to_infect and pointers to index of structure_dict or neighbor_dict
         //
     }
@@ -352,7 +450,6 @@ class CellOperator {
 class Framework {
     std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict;
     std::map<int, std::vector<int>> m_neighbor_dict;
-
 
     CellOperator m_cell_operator;
     CellViewer m_cell_viewer;

@@ -2,16 +2,24 @@ import time
 
 from pymatgen.io.cif import CifParser
 from pymatgen.analysis.local_env import VoronoiNN, get_neighbors_of_site_with_index
+from pymatgen.symmetry.groups import PointGroup, SpaceGroup
 from package import finding_generators as fg
 import numpy as np
 import math
 import json
+
 
 voronoi = VoronoiNN(compute_adj_neighbors=False)
 
 parser = CifParser("rocksalt_alnit.cif")
 
 structures = parser.parse_structures(primitive=False)
+
+sg = SpaceGroup("Fm-3m")
+# x -> x*rotation + translation
+
+rotations = [op.rotation_matrix for op in sg.symmetry_ops]
+translations = [op.translation_vector for op in sg.symmetry_ops]
 
 structure_dict = {}
 neighbor_dict = {}
@@ -20,10 +28,9 @@ neighbor_dict = {}
 #    neighbor_dict = json.load(f)
 #    f.close()
 
-
 neighbor_dict = {int(key): val for (key, val) in zip(neighbor_dict.keys(), neighbor_dict.values())}
 
-for i, site in enumerate(rescaled_structure := structures[0]*(3,3,3)):
+for i, site in enumerate(rescaled_structure := structures[0]*(2,2,2)):
     site = site.as_dict()
     structure_dict[i] = {}
 
