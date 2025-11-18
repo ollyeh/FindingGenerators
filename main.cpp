@@ -245,7 +245,7 @@ public:
                         spd::debug("loop");
                     }
                     random_neighbor_index = m_uniform_int_distribution(m_generator);
-                    if (agent_unique_ptrs.at(random_neighbor_index)->get_status() == 0) {
+                    if (agent_unique_ptrs.at(neighbors_ptr->at(random_neighbor_index))->get_status() == 0) {
                         neighbor_not_susceptible = false;
                     }
                 }
@@ -330,7 +330,7 @@ public:
         }
     }
 
-    void update_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
+    void update_simulation() {
         std::vector<int> next_infected_vector = {};
         // cause_of_infection maps the next infected agent to the pointers of agent pointers that caused the next infection (one to many)
         // next_infected maps the infected agent to the next infected agent (one to one)
@@ -397,9 +397,7 @@ public:
         //    spd::info(agents_to_infect_next_ptr->size());
         //}
         update_agent_states(&next_infected_vector);
-        ptr_cell_viewer->update_color_buffer();
-        ptr_cell_viewer->viewer.update();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        //std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
         // we have to reset the agent's neighbor vectors individually based on the init map
         // Reset each agent's neighbors to the initial neighbors
@@ -419,6 +417,9 @@ class CellOperator {
     Grid m_grid;
     std::vector<std::unique_ptr<Agent>> m_agent_unique_ptrs;
     std::string m_element;
+    std::vector<std::string> m_config;
+    std::vector<std::vector<std::string>> m_configurations = {};
+    int m_n_configurations;
 
     public:
     CellOperator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, std::map<int, std::vector<int>> *neighbor_dict_ptr)
@@ -482,26 +483,65 @@ class CellOperator {
         }
     }
 
-    void get_possibilities() {
+    void get_n_configurations() {
+        int n_atoms = m_ptr_structure_dict->size();
+        int n_swaps = m_picked_swaps.size();
+        int prod_1 = 1, prod_2 = 1;
+        for (int i = 0; i < n_swaps; i++) {
+            prod_1 = prod_1*(n_atoms - i);
+            prod_2 = prod_2*(n_swaps - i);
+        }
+        m_n_configurations =  prod_1 / prod_2;
         //int const n_conf
         //spd::info("Configuration space consists of {} possible configurations.", n_conf);
     }
 
     void run_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
+        int n_found_configs = 0;
+        get_n_configurations();
         // to_indext = picked_swaps
-        for (int i = 0; i < 100000; i++) {
+        spd::info("Truncating after {} configurations have been found", m_n_configurations);
+
+        int i = 0;
+        while (n_found_configs < m_n_configurations) {
             if (i%1000 == 0) {
                 spd::info("Simulation step {}", i);
+                spd::info("Number of found configurations {}", n_found_configs);
             }
-            m_grid.update_simulation(ptr_cell_viewer);
+            m_grid.update_simulation();
+            ptr_cell_viewer->update_color_buffer();
+            ptr_cell_viewer->viewer.update();
             update_m_structure_dict();
+
+            //here write every m_structure_dict to file or append elements to vector
+            // check vector of elements against vector of vector of elements
+
+            m_config.clear();
+            for (auto &[key, val] : *m_ptr_structure_dict) {
+                auto &element = val.first;
+                m_config.emplace_back(element);
+            }
+
+            bool exists = std::any_of(
+    m_configurations.begin(), m_configurations.end(),
+    [&](const auto& config) {
+        return std::equal(config.begin(), config.end(), m_config.begin());
+    }
+);
+            if (!exists) {
+                m_configurations.emplace_back(m_config);
+                ++n_found_configs;
+            }
+
 
 
             // update m_structure_dict using its ptr
             // iterate over agent states and if state=0 take element from m_structure_dict_init
             // if state=1 take dopant element
+            ++i;
         }
         spd::info("Simulation complete");
+        spd::info("Found {} configurations after {} simulation steps", n_found_configs, i);
         // initialize the simulation grid with to_infect and pointers to index of structure_dict or neighbor_dict
         //
     }
@@ -558,13 +598,11 @@ class Framework {
         m_cell_viewer.open_viewer();
     }
 
-    void run_simulation(bool show) {
+    void run_simulation() {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_unique_ptr = std::unique_ptr<CellViewer>(&m_cell_viewer);
         results.emplace(thread_pool.AddTask([this, &m_cell_viewer_unique_ptr]() { this->m_cell_operator.run_simulation(m_cell_viewer_unique_ptr); }));
-        if (show) {
-            m_cell_viewer.open_viewer();
-        }
+        m_cell_viewer.open_viewer();
 
         //m_cell_operator.run_simulation();
     }
