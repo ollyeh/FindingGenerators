@@ -52,6 +52,7 @@ class CellViewer {
     std::map<int, std::pair<std::string, std::array<float, 3>>> *m_ptr_structure_dict;
     std::map<std::string, easy3d::vec3> m_unique_element_colors;
     easy3d::PointCloud m_atoms;
+    std::shared_ptr<easy3d::PointCloud> m_atoms_shared_ptr;
 
 public:
     easy3d::Viewer viewer;
@@ -88,10 +89,12 @@ public:
             auto &entry = m_ptr_structure_dict->at(i);
             auto vertex = m_atoms.add_vertex(easy3d::vec3({entry.second[0], entry.second[1], entry.second[2]}));// z = 0: all points are on XY plane
             colors[vertex] = m_unique_element_colors[entry.first];
-            m_atomic_positions.push_back({entry.second[0], entry.second[1], entry.second[2]});
+            m_atomic_positions.emplace_back(entry.second[0], entry.second[1], entry.second[2]);
         }
-        viewer.add_model(&m_atoms);
-        auto drawable = m_atoms.renderer()->get_points_drawable("vertices");
+        m_atoms_shared_ptr = std::make_shared<easy3d::PointCloud>(m_atoms);
+        viewer.add_model(m_atoms_shared_ptr);
+        auto drawable = viewer.current_model()->renderer()->get_points_drawable("vertices");
+        //auto drawable = m_atoms.renderer()->get_points_drawable("vertices");
         drawable->set_impostor_type(easy3d::PointsDrawable::SPHERE);
         drawable->set_point_size(50);
 
@@ -141,23 +144,25 @@ public:
 
     void open_viewer() {
         viewer.run();
+    }
+
+    void close_viewer() {
         viewer.exit();
     }
 
     void update_color_buffer() {
         size_t index = 0;
-        auto drawable = m_atoms.renderer()->get_points_drawable("vertices");
-        auto colors = m_atoms.vertex_property<easy3d::vec3>("v:color");
+        //auto colors = m_atoms.vertex_property<easy3d::vec3>("v:color");
+        auto colors = m_atoms_shared_ptr->get_vertex_property<easy3d::vec3>("v:color");
         for (auto vertex : m_atoms.vertices()) {
             auto &entry = m_ptr_structure_dict->at(index);
             colors[vertex] = m_unique_element_colors[entry.first];
             ++index;
         }
+        viewer.current_model()->renderer()->update();
         if constexpr (enable_debug_logging) {
             spd::debug("Updating color buffer");
         }
-        drawable->set_coloring(easy3d::State::COLOR_PROPERTY, easy3d::State::VERTEX, "v:color");
-        drawable->update();
     }
 };
 
@@ -486,17 +491,18 @@ class CellOperator {
     void get_n_configurations() {
         int n_atoms = m_ptr_structure_dict->size();
         int n_swaps = m_picked_swaps.size();
-        int prod_1 = 1, prod_2 = 1;
+        uint64_t prod_1 = 1, prod_2 = 1;
         for (int i = 0; i < n_swaps; i++) {
             prod_1 = prod_1*(n_atoms - i);
             prod_2 = prod_2*(n_swaps - i);
         }
-        m_n_configurations =  prod_1 / prod_2;
+        m_n_configurations =  static_cast<int>(prod_1 / prod_2);
         //int const n_conf
         //spd::info("Configuration space consists of {} possible configurations.", n_conf);
     }
 
-    void run_simulation(const std::unique_ptr<CellViewer> &ptr_cell_viewer) {
+    void run_simulation(CellViewer *ptr_cell_viewer) {
+        auto &cell_viewer = *ptr_cell_viewer;
         int n_found_configs = 0;
         get_n_configurations();
         // to_indext = picked_swaps
@@ -509,8 +515,8 @@ class CellOperator {
                 spd::info("Number of found configurations {}", n_found_configs);
             }
             m_grid.update_simulation();
-            ptr_cell_viewer->update_color_buffer();
-            ptr_cell_viewer->viewer.update();
+            cell_viewer.update_color_buffer();
+            cell_viewer.viewer.update();
             update_m_structure_dict();
 
             //here write every m_structure_dict to file or append elements to vector
@@ -522,18 +528,11 @@ class CellOperator {
                 m_config.emplace_back(element);
             }
 
-            bool exists = std::any_of(
-    m_configurations.begin(), m_configurations.end(),
-    [&](const auto& config) {
-        return std::equal(config.begin(), config.end(), m_config.begin());
-    }
-);
+            bool exists = std::any_of(m_configurations.begin(), m_configurations.end(), [&](const auto& config) {return std::equal(config.begin(), config.end(), m_config.begin());});
             if (!exists) {
                 m_configurations.emplace_back(m_config);
                 ++n_found_configs;
             }
-
-
 
             // update m_structure_dict using its ptr
             // iterate over agent states and if state=0 take element from m_structure_dict_init
@@ -560,6 +559,7 @@ class Framework {
 
     py::dict python_structure_dict;
     py::dict python_neighbor_dict;
+    py::dict python_configuration_dict = {};
     // pass the address of the map to the individual objects
     // the map is still owned by Framework
     Framework(const py::dict &structure_dict, const py::dict &neighbor_dict, const py::kwargs& kwargs)
@@ -600,9 +600,10 @@ class Framework {
 
     void run_simulation() {
         m_cell_viewer.initialize_viewer();
-        auto m_cell_viewer_unique_ptr = std::unique_ptr<CellViewer>(&m_cell_viewer);
-        results.emplace(thread_pool.AddTask([this, &m_cell_viewer_unique_ptr]() { this->m_cell_operator.run_simulation(m_cell_viewer_unique_ptr); }));
+        auto m_cell_viewer_ptr = &m_cell_viewer;
+        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_cell_operator.run_simulation(m_cell_viewer_ptr); }));
         m_cell_viewer.open_viewer();
+        //return python_configuration_dict;
 
         //m_cell_operator.run_simulation();
     }
