@@ -58,7 +58,6 @@ std::map<std::string, easy3d::vec3> colors = {
     {"Mo", easy3d::vec3(1.0f, 0.7f, 0.2f)},
 };
 
-
 class CellViewer {
     std::vector<easy3d::vec3> m_atomic_positions;
     std::map<int, std::pair<std::string, std::array<float, 3>>> *m_ptr_structure_dict;
@@ -419,7 +418,6 @@ public:
     }
 };
 
-
 class AtomPermutator{
     inline static thread_local std::default_random_engine m_generator;
     std::vector<int> m_picked_swaps;
@@ -436,7 +434,6 @@ class AtomPermutator{
     AtomPermutator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr)
         :  m_ptr_structure_dict(structure_dict_ptr)
     {
-        root["configurations"] = nlohmann::json::array();
     }
     //highly problematic, copy the dict and dope the copy
     //we need the undoped dict for the virus simulation
@@ -517,14 +514,14 @@ class AtomPermutator{
             //std::this_thread::sleep_for(std::chrono::milliseconds(400));
 
              if (configuration_index%1000 == 0) {
-                spd::info("Simulation step {}", configuration_index);
+                spd::info("Permutation step {} / {} %", configuration_index, static_cast<float>(configuration_index)/static_cast<float>(m_n_configurations)*100);
             }
 
             update_m_structure_dict();
             nlohmann::json configuration;
             int atom_index = 0;
             for (auto &[key, val] : *m_ptr_structure_dict) {
-                configuration[std::to_string(atom_index)] = {{"element", val.first}, {"positions", val.second}};
+                configuration[std::to_string(atom_index)] = {{"element", val.first}, {"frac_coord", val.second}};
                 ++atom_index;
             }
             root[std::to_string(configuration_index)] = configuration;
@@ -769,6 +766,102 @@ class VirusSimulatorFramework {
     }
 };
 
+class GeneratorFinder {
+    public:
+    explicit GeneratorFinder(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr) {
+    }
+};
+
+class GeneratorFinderFramework {
+    std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict;
+
+    // this natural beauty maps long strings of element labels to m_structure_dict's pointer
+    std::map<std::string, std::shared_ptr<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>> m_hash_to_ptr;
+
+    // m_transformation is a vector (member variable) that contains .first -> translation vector and .second -> rotation matrix
+    std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> m_transformations_dict;
+    nlohmann::json m_json;
+
+    GeneratorFinder m_generator_finder;
+    CellViewer m_cell_viewer;
+
+    public:
+    ThreadPool thread_pool{1};
+    std::queue<std::future<void>> results;
+
+    py::dict python_transformations_dict;
+
+    explicit GeneratorFinderFramework(const py::str &path, const py::dict &transformations)
+    : m_generator_finder(&m_structure_dict), m_cell_viewer(&m_structure_dict)
+    {
+        read_parse_json(std::string(path));
+        build_hash_dicts();
+        python_transformations_dict = transformations;
+        parse_transformations();
+        check_transformation_parsing();
+    }
+
+    void parse_transformations() {
+        spd::info("Parsing transformations");
+        for (auto &[key, val] : python_transformations_dict) {
+            m_transformations_dict[key.cast<int>()] = {val["trans"].cast<std::array<float, 3>>(), val["rot"].cast<std::array<std::array<float, 3>, 3>>()};
+        }
+        spd::info("Successfully parsed transformations");
+    }
+
+    void check_transformation_parsing() {
+        for (auto &[key, val] : m_transformations_dict) {
+            std::cout << "Translation" << std::endl;
+            for (int i = 0; i < val.first.size(); i++) {
+                std::cout << val.first[i] << " ";
+            }
+            std::cout << std::endl;
+
+            std::cout << "Rotation" << std::endl;
+            for (int i = 0; i < val.second.size(); i++) {
+                for (int j = 0; j < val.second[i].size(); j++) {
+                    std::cout << val.second[i][j] << " ";
+                }
+                std::cout << std::endl;
+            }
+        }
+    }
+
+    void build_hash_dicts() {
+        int configuration_index = 0;
+        for (auto &configuration : m_json) {
+            int atom_index = 0;
+            std::string hash;
+            std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> structure_dict;
+            for (auto &atom : configuration) {
+                hash += atom.at("element");
+                // structure dict is comprised of atom_index (key) -> element, frac_coord, frac_coord_hash
+                auto element = static_cast<std::string>(atom.at("element"));
+                auto frac_coord = static_cast<std::array<float, 3>>(atom.at("frac_coord"));
+                auto frac_coord_hash = atom.at("frac_coord").dump();
+                //structure_dict[atom_index] = std::make_tuple(element, frac_coord, frac_coord_hash);
+                ++atom_index;
+            }
+            auto structure_dict_ptr = std::make_shared<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>(structure_dict);
+            m_hash_to_ptr[hash] = structure_dict_ptr;
+            ++configuration_index;
+        }
+    }
+
+    void read_parse_json(std::string path) {
+        // read the configuration json file whose path is "path_to_json"
+        //spd::info("Reading json at {}", path_to_json);
+        spd::info("Reading json file for parsing located at {}", path);
+        std::ifstream json_file(path);
+        m_json = nlohmann::json::parse(json_file);
+        spd::info("Successfully parsed json");
+    }
+
+
+
+
+};
+
 PYBIND11_MODULE(finding_generators, m) {
     m.doc() = "Python bindings for functions in Python";
 
@@ -784,5 +877,6 @@ PYBIND11_MODULE(finding_generators, m) {
     .def("display_cell", &AtomPermutatorFramework::display_cell)
     .def("run_permutation", &AtomPermutatorFramework::run_permutation);
 
-
+    py::class_<GeneratorFinderFramework>(m, "GeneratorFinder")
+    .def(py::init<py::str, py::dict>());
 }
