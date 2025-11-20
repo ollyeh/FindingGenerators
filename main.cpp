@@ -36,6 +36,18 @@ namespace spd = spdlog;
 
 constexpr bool enable_debug_logging = false;
 
+unsigned long long binomial(unsigned n, unsigned k) {
+    if (k > n) return 0;
+    if (k > n - k) k = n - k;
+
+    __uint128_t result = 1;
+    for (unsigned i = 1; i <= k; ++i) {
+        result = result * (n - (k - i));
+        result /= i;
+    }
+    return (unsigned long long) result;
+}
+
 std::map<std::string, easy3d::vec3> colors = {
     {"Al", easy3d::vec3(1.0f, 0.0f, 0.0f)},
     {"N", easy3d::vec3(0.0f, 1.0f, 0.0f)},
@@ -241,7 +253,7 @@ public:
             }
             std::uniform_int_distribution<int> m_uniform_int_distribution(0, neighbors_ptr->size()-1);
             // pick a random neighbor from neighbors_ptr's vector that is not in temp
-            int random_neighbor_index = 2;
+            int random_neighbor_index;
             bool neighbor_not_susceptible = true;
 
             if (neighbors_ptr->size() != 0) {
@@ -263,11 +275,9 @@ public:
                 random_neighbor_index = -1;
             }
 
-
             if constexpr (enable_debug_logging) {
                 spd::debug("Picked {} as neighbor", random_neighbor_index);
             }
-
 
             //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
 
@@ -352,24 +362,23 @@ public:
         // use these to remove the val of causes_of_infection from almost all neighbor dicts
 
         // get boolean true if any entry in collisions is set to true
-        auto hits_iterator = hits.begin();
         int it = 0;
         while (std::any_of(hits.begin(), hits.end(), [](auto &key_value_pair) {return key_value_pair.second > 1;})) {
             if constexpr (enable_debug_logging) {
                 spd::debug("Iteration {}", it);
             }
-            for (;hits_iterator != hits.end(); ++hits_iterator) {
-                if (hits_iterator->second > 1) {
+            for (auto &[key, val] : hits) {
+                if (val > 1) {
                     if constexpr (enable_debug_logging) {
-                        spd::debug("Collision event at lattice site {}", hits_iterator->first);
+                        spd::debug("Collision event at lattice site {}", key);
                     }
-                    for (auto i : causes_of_infection.at(hits_iterator->first)) {
+                    for (auto i : causes_of_infection.at(key)) {
                         // now remove key in agent i's neighbors vector
                         if constexpr (enable_debug_logging) {
-                            spd::debug("Removing {} as agent {}'s neighbor", hits_iterator->first, i);
+                            spd::debug("Removing {} as agent {}'s neighbor", key, i);
                         }
                         auto &ptr_to_neighbors = agent_unique_ptrs.at(i)->neighbors_ptr;
-                        ptr_to_neighbors->erase(std::remove(ptr_to_neighbors->begin(), ptr_to_neighbors->end(), hits_iterator->first), ptr_to_neighbors->end());
+                        ptr_to_neighbors->erase(std::remove(ptr_to_neighbors->begin(), ptr_to_neighbors->end(), key), ptr_to_neighbors->end());
                     }
                 }
                 else {}
@@ -381,8 +390,6 @@ public:
             draw_neighbors_to_infect_next(&next_infected);
             map_next_infected_to_causes(&next_infected, &causes_of_infection);
             map_next_infected_to_hits(&hits, &causes_of_infection);
-
-            hits_iterator = hits.begin();
             ++it;
         }
 
@@ -413,7 +420,172 @@ public:
 };
 
 
-class CellOperator {
+class AtomPermutator{
+    inline static thread_local std::default_random_engine m_generator;
+    std::vector<int> m_picked_swaps;
+    std::map<int, std::pair<std::string, std::array<float, 3>>> *m_ptr_structure_dict;
+    std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict_init;
+    std::string m_element;
+    std::vector<int> m_config;
+    std::vector<std::string> m_configurations = {};
+    int m_n_configurations;
+
+    public:
+    AtomPermutator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr)
+        :  m_ptr_structure_dict(structure_dict_ptr)
+    {
+    }
+    //highly problematic, copy the dict and dope the copy
+    //we need the undoped dict for the virus simulation
+
+    void backup_dict() {
+        m_structure_dict_init = *m_ptr_structure_dict;
+        spd::info("Copying structure dict");
+    }
+
+    void dope_cell(int n_swaps, const std::string& element) {
+        this->m_element = element;
+
+        std::uniform_int_distribution<int> m_uniform_int_distribution(0, m_ptr_structure_dict->size()-1);
+        if (n_swaps >= m_ptr_structure_dict->size()) {
+            throw std::invalid_argument("n_swaps must not be >= than the number of atoms! Don't be lazy and build the pure cell yourself...");
+            }
+        spd::info("Swapping atoms");
+        for (int i = 0; m_picked_swaps.size() < n_swaps; i++) {
+            int temp = m_uniform_int_distribution(m_generator);
+            //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
+            if (m_picked_swaps.end() == std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) {
+                m_picked_swaps.push_back(temp);
+                }
+            }
+        for (int index : m_picked_swaps) {
+            m_ptr_structure_dict->at(index).first = element;
+        }
+    }
+
+    void update_m_structure_dict() {
+        int i = 0;
+        for (const auto& [key, val] : *m_ptr_structure_dict) {
+            //std::cout << "status: " << status << std::endl;
+
+            if (m_config[i] == 0) {
+                m_ptr_structure_dict->at(key).first = m_structure_dict_init.at(key).first;
+                if constexpr (enable_debug_logging) {
+                    spd::debug("Agent {} -> {}", key, m_ptr_structure_dict->at(key).first);
+                }
+            }
+            else if (m_config[i] == 1) {
+                m_ptr_structure_dict->at(key).first = m_element;
+                if constexpr (enable_debug_logging) {
+                    spd::debug("Agent {} -> {}", key, m_element);
+                }
+            }
+            else {
+                if constexpr (enable_debug_logging) {
+                    spd::warn("Status for agent {} is unknown.", key);
+                }
+            }
+            ++i;
+        }
+    }
+
+    void run_permutation(CellViewer *ptr_cell_viewer) {
+        m_config.clear();
+        auto &cell_viewer = *ptr_cell_viewer;
+
+        m_n_configurations = binomial(m_ptr_structure_dict->size(), m_picked_swaps.size());
+        spd::info("Considering all {} permutations", m_n_configurations);
+
+        spd::info("Building translated doped layer");
+        for (auto &[key, val] : *m_ptr_structure_dict) {
+            auto &element = val.first;
+            if (element == m_structure_dict_init[key].first) {
+                m_config.emplace_back(0);
+            }
+            else {
+                m_config.emplace_back(1);
+            }
+        }
+
+        std::sort(m_config.begin(), m_config.end());
+
+        int i = 0;
+        do {
+            //std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+             if (i%1000 == 0) {
+                spd::info("Simulation step {}", i);
+            }
+
+            update_m_structure_dict();
+            cell_viewer.update_color_buffer();
+            cell_viewer.viewer.update();
+
+            ++i;
+        } while (std::next_permutation(m_config.begin(), m_config.end()));
+        spd::info("Done finding permutations");
+    }
+};
+
+class AtomPermutatorFramework {
+    std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict;
+    std::map<int, std::vector<int>> m_neighbor_dict;
+
+    AtomPermutator m_atom_permutator;
+    CellViewer m_cell_viewer;
+
+    public:
+    ThreadPool thread_pool{1};
+    std::queue<std::future<void>> results;
+
+    py::dict python_structure_dict;
+    py::dict python_neighbor_dict;
+    py::dict python_configuration_dict = {};
+    // pass the address of the map to the individual objects
+    // the map is still owned by Framework
+    AtomPermutatorFramework(const py::dict &structure_dict, const py::kwargs& kwargs)
+        : m_atom_permutator(&m_structure_dict), m_cell_viewer(&m_structure_dict)
+    {
+        if (not kwargs.contains("crystal_system")) {
+            throw std::invalid_argument("Specify keyword argument 'crystal_system'!");
+        }
+        if (kwargs.contains("crystal_system") and kwargs["crystal_system"].cast<std::string>() != "cubic") {
+            throw std::invalid_argument("Crystal system must be a cubic!");
+        }
+        python_structure_dict = structure_dict;
+        parse_dicts();
+        m_atom_permutator.backup_dict();
+    }
+
+    void parse_dicts() {
+        // look for general, crystal structure = cubic, if not: break
+        // parse atoms into map key: (atom_index, element), value: array[3] of fractional coords
+        //map will be used later
+
+        for (auto const& [key, val] : python_structure_dict) {
+            m_structure_dict[key.cast<int>()] = {val["element"].cast<std::string>(), val["frac_coord"].cast<std::array<float, 3>>()};
+        }
+    }
+
+    void dope_cell(int n_swaps, const std::string &element) {
+        m_atom_permutator.dope_cell(n_swaps, element);
+    }
+
+    void display_cell() {
+        m_cell_viewer.open_viewer();
+    }
+
+    void run_permutation() {
+        m_cell_viewer.initialize_viewer();
+        auto m_cell_viewer_ptr = &m_cell_viewer;
+        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_atom_permutator.run_permutation(m_cell_viewer_ptr); }));
+        m_cell_viewer.open_viewer();
+        //return python_configuration_dict;
+        //m_cell_operator.run_simulation();
+    }
+};
+
+class VirusSimulator {
     inline static thread_local std::default_random_engine m_generator;
     std::vector<int> m_picked_swaps;
     std::map<int, std::pair<std::string, std::array<float, 3>>> *m_ptr_structure_dict;
@@ -422,12 +594,13 @@ class CellOperator {
     Grid m_grid;
     std::vector<std::unique_ptr<Agent>> m_agent_unique_ptrs;
     std::string m_element;
-    std::vector<std::string> m_config;
-    std::vector<std::vector<std::string>> m_configurations = {};
+    std::vector<int> m_config;
+    std::string m_config_str = "";
+    std::vector<std::string> m_configurations = {};
     int m_n_configurations;
 
     public:
-    CellOperator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, std::map<int, std::vector<int>> *neighbor_dict_ptr)
+    VirusSimulator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, std::map<int, std::vector<int>> *neighbor_dict_ptr)
         :  m_ptr_structure_dict(structure_dict_ptr), m_ptr_neighbor_dict(neighbor_dict_ptr), m_grid(m_ptr_neighbor_dict)
     {
     }
@@ -439,7 +612,7 @@ class CellOperator {
         spd::info("Copying structure dict");
     }
 
-    void dope_cell(int n_swaps, std::string element) {
+    void dope_cell(int n_swaps, const std::string& element) {
         this->m_element = element;
 
         std::uniform_int_distribution<int> m_uniform_int_distribution(0, m_ptr_structure_dict->size()-1);
@@ -484,32 +657,20 @@ class CellOperator {
                     spd::warn("Status for agent {} is unknown.", key);
                 }
             }
-
         }
-    }
-
-    void get_n_configurations() {
-        int n_atoms = m_ptr_structure_dict->size();
-        int n_swaps = m_picked_swaps.size();
-        uint64_t prod_1 = 1, prod_2 = 1;
-        for (int i = 0; i < n_swaps; i++) {
-            prod_1 = prod_1*(n_atoms - i);
-            prod_2 = prod_2*(n_swaps - i);
-        }
-        m_n_configurations =  static_cast<int>(prod_1 / prod_2);
-        //int const n_conf
-        //spd::info("Configuration space consists of {} possible configurations.", n_conf);
     }
 
     void run_simulation(CellViewer *ptr_cell_viewer) {
         auto &cell_viewer = *ptr_cell_viewer;
         int n_found_configs = 0;
-        get_n_configurations();
+        m_n_configurations = binomial(m_ptr_structure_dict->size(), m_picked_swaps.size());
         // to_indext = picked_swaps
         spd::info("Truncating after {} configurations have been found", m_n_configurations);
 
         int i = 0;
         while (n_found_configs < m_n_configurations) {
+            m_config_str.clear();
+
             if (i%1000 == 0) {
                 spd::info("Simulation step {}", i);
                 spd::info("Number of found configurations {}", n_found_configs);
@@ -523,14 +684,15 @@ class CellOperator {
             // check vector of elements against vector of vector of elements
 
             m_config.clear();
+
             for (auto &[key, val] : *m_ptr_structure_dict) {
                 auto &element = val.first;
-                m_config.emplace_back(element);
+                m_config_str = m_config_str + element;
             }
 
-            bool exists = std::any_of(m_configurations.begin(), m_configurations.end(), [&](const auto& config) {return std::equal(config.begin(), config.end(), m_config.begin());});
+            bool exists = std::any_of(m_configurations.begin(), m_configurations.end(), [&](const auto& config) {return std::equal(config.begin(), config.end(), m_config_str.begin());});
             if (!exists) {
-                m_configurations.emplace_back(m_config);
+                m_configurations.emplace_back(m_config_str);
                 ++n_found_configs;
             }
 
@@ -546,11 +708,11 @@ class CellOperator {
     }
 };
 
-class Framework {
+class VirusSimulatorFramework {
     std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict;
     std::map<int, std::vector<int>> m_neighbor_dict;
 
-    CellOperator m_cell_operator;
+    VirusSimulator m_virus_simulator;
     CellViewer m_cell_viewer;
 
     public:
@@ -562,8 +724,8 @@ class Framework {
     py::dict python_configuration_dict = {};
     // pass the address of the map to the individual objects
     // the map is still owned by Framework
-    Framework(const py::dict &structure_dict, const py::dict &neighbor_dict, const py::kwargs& kwargs)
-        : m_cell_operator(&m_structure_dict, &m_neighbor_dict), m_cell_viewer(&m_structure_dict)
+    VirusSimulatorFramework(const py::dict &structure_dict, const py::dict &neighbor_dict, const py::kwargs& kwargs)
+        : m_virus_simulator(&m_structure_dict, &m_neighbor_dict), m_cell_viewer(&m_structure_dict)
     {
         if (not kwargs.contains("crystal_system")) {
             throw std::invalid_argument("Specify keyword argument 'crystal_system'!");
@@ -574,7 +736,7 @@ class Framework {
         python_structure_dict = structure_dict;
         python_neighbor_dict = neighbor_dict;
         parse_dicts();
-        m_cell_operator.backup_dict();
+        m_virus_simulator.backup_dict();
     }
 
     void parse_dicts() {
@@ -591,7 +753,7 @@ class Framework {
     }
 
     void dope_cell(int n_swaps, const std::string &element) {
-        m_cell_operator.dope_cell(n_swaps, element);
+        m_virus_simulator.dope_cell(n_swaps, element);
     }
 
     void display_cell() {
@@ -601,7 +763,7 @@ class Framework {
     void run_simulation() {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
-        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_cell_operator.run_simulation(m_cell_viewer_ptr); }));
+        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_virus_simulator.run_simulation(m_cell_viewer_ptr); }));
         m_cell_viewer.open_viewer();
         //return python_configuration_dict;
 
@@ -611,9 +773,18 @@ class Framework {
 
 PYBIND11_MODULE(finding_generators, m) {
     m.doc() = "Python bindings for functions in Python";
-    py::class_<Framework>(m, "Framework")
+
+    py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
     .def(py::init<py::dict, py::dict, py::kwargs>())
-    .def("dope_cell", &Framework::dope_cell)
-    .def("display_cell", &Framework::display_cell)
-    .def("run_simulation", &Framework::run_simulation);
+    .def("dope_cell", &VirusSimulatorFramework::dope_cell)
+    .def("display_cell", &VirusSimulatorFramework::display_cell)
+    .def("run_simulation", &VirusSimulatorFramework::run_simulation);
+
+    py::class_<AtomPermutatorFramework>(m, "AtomPermutator")
+    .def(py::init<py::dict, py::kwargs>())
+    .def("dope_cell", &AtomPermutatorFramework::dope_cell)
+    .def("display_cell", &AtomPermutatorFramework::display_cell)
+    .def("run_permutation", &AtomPermutatorFramework::run_permutation);
+
+
 }

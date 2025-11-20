@@ -23,18 +23,17 @@ translations = [op.translation_vector for op in sg.symmetry_ops]
 
 structure_dict = {}
 neighbor_dict = {}
-
-#with open("temp.json", "r") as f:
-#    neighbor_dict = json.load(f)
-#    f.close()
+with open("temp.json", "r") as f:
+    neighbor_dict = json.load(f)
+    f.close()
 
 neighbor_dict = {int(key): val for (key, val) in zip(neighbor_dict.keys(), neighbor_dict.values())}
 
-for i, site in enumerate(rescaled_structure := structures[0]*(2,2,2)):
+for i, site in enumerate(rescaled_structure := structures[0]*(20,20,20)):
     site = site.as_dict()
     structure_dict[i] = {}
 
-    neighbor_dict[i] = [int(i) for i in np.unique([int(n["site_index"]) for n in voronoi.get_nn_info(rescaled_structure, i)])]
+    #neighbor_dict[i] = [int(i) for i in np.unique([int(n["site_index"]) for n in voronoi.get_nn_info(rescaled_structure, i)])]
 
     frac_coord = np.array(site["abc"])
 
@@ -47,18 +46,30 @@ for i, site in enumerate(rescaled_structure := structures[0]*(2,2,2)):
 
     structure_dict[i] = {"element": site["species"][0]["element"], "frac_coord": frac_coord}
 
-with open("temp.json", "w") as f:
-    json.dump(neighbor_dict, f)
-    f.close()
+#with open("temp.json", "w") as f:
+#    json.dump(neighbor_dict, f)
+#    f.close()
 
 structure_dict[i] = {"element": site["species"][0]["element"], "frac_coord": site["abc"]}
 print(len(structure_dict.keys()))
 
 print(neighbor_dict)
 
-framework = fg.Framework(structure_dict, neighbor_dict, crystal_system="cubic")
-framework.dope_cell(2, "Sc")
+"""
+vs = fg.VirusSimulator(structure_dict, neighbor_dict, crystal_system="cubic")
+vs.dope_cell(2, "Sc")
+vs.run_simulation()
+"""
+
+ap = fg.AtomPermutator(structure_dict, crystal_system="cubic")
+ap.dope_cell(2, "Sc")
+ap.run_permutation()
+
+#framework.dope_cell(1, "Sc")
 #framework.display_cell()
 #framework.display_cell()
-framework.run_simulation()
+
+#framework.run_simulation()
+
+#framework.get_permutations(1, "Sc")
 #framework.dope_cell(4, "Sc")
