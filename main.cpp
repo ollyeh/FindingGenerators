@@ -432,7 +432,6 @@ class AtomPermutator{
     public:
     std::vector<std::map<int, std::pair<std::string, std::array<float, 3>>>> configurations = {};
     nlohmann::json root;
-    nlohmann::json configuration;
 
     AtomPermutator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr)
         :  m_ptr_structure_dict(structure_dict_ptr)
@@ -501,7 +500,6 @@ class AtomPermutator{
         m_n_configurations = binomial(m_ptr_structure_dict->size(), m_picked_swaps.size());
         spd::info("Considering all {} permutations", m_n_configurations);
 
-        spd::info("Building translated doped layer");
         for (auto &[key, val] : *m_ptr_structure_dict) {
             auto &element = val.first;
             if (element == m_structure_dict_init[key].first) {
@@ -514,28 +512,30 @@ class AtomPermutator{
 
         std::sort(m_config.begin(), m_config.end());
 
-        int i = 0;
+        int configuration_index = 0;
         do {
             //std::this_thread::sleep_for(std::chrono::milliseconds(400));
 
-             if (i%1000 == 0) {
-                spd::info("Simulation step {}", i);
+             if (configuration_index%1000 == 0) {
+                spd::info("Simulation step {}", configuration_index);
             }
 
             update_m_structure_dict();
-            nlohmann::json config;
+            nlohmann::json configuration;
+            int atom_index = 0;
             for (auto &[key, val] : *m_ptr_structure_dict) {
-                config[key] = {key, val};
+                configuration[std::to_string(atom_index)] = {{"element", val.first}, {"positions", val.second}};
+                ++atom_index;
             }
-            root["configurations"].push_back({i, config});
+            root[std::to_string(configuration_index)] = configuration;
 
             cell_viewer.update_color_buffer();
             cell_viewer.viewer.update();
-            ++i;
+            ++configuration_index;
         } while (std::next_permutation(m_config.begin(), m_config.end()));
-        spd::info("Done finding {} permutations", i);
+        spd::info("Done finding {} permutations", configuration_index);
         spd::info("Dumping configurations to json");
-        std::ofstream(*path) << root.dump();
+        std::ofstream(*path) << root.dump(1);
     }
 };
 
