@@ -523,7 +523,7 @@ class AtomPermutator{
 
             ++i;
         } while (std::next_permutation(m_config.begin(), m_config.end()));
-        spd::info("Done finding permutations");
+        spd::info("Done finding {} permutations", i);
     }
 };
 
@@ -543,15 +543,9 @@ class AtomPermutatorFramework {
     py::dict python_configuration_dict = {};
     // pass the address of the map to the individual objects
     // the map is still owned by Framework
-    AtomPermutatorFramework(const py::dict &structure_dict, const py::kwargs& kwargs)
+    AtomPermutatorFramework(const py::dict &structure_dict)
         : m_atom_permutator(&m_structure_dict), m_cell_viewer(&m_structure_dict)
     {
-        if (not kwargs.contains("crystal_system")) {
-            throw std::invalid_argument("Specify keyword argument 'crystal_system'!");
-        }
-        if (kwargs.contains("crystal_system") and kwargs["crystal_system"].cast<std::string>() != "cubic") {
-            throw std::invalid_argument("Crystal system must be a cubic!");
-        }
         python_structure_dict = structure_dict;
         parse_dicts();
         m_atom_permutator.backup_dict();
@@ -724,15 +718,9 @@ class VirusSimulatorFramework {
     py::dict python_configuration_dict = {};
     // pass the address of the map to the individual objects
     // the map is still owned by Framework
-    VirusSimulatorFramework(const py::dict &structure_dict, const py::dict &neighbor_dict, const py::kwargs& kwargs)
+    VirusSimulatorFramework(const py::dict &structure_dict, const py::dict &neighbor_dict)
         : m_virus_simulator(&m_structure_dict, &m_neighbor_dict), m_cell_viewer(&m_structure_dict)
     {
-        if (not kwargs.contains("crystal_system")) {
-            throw std::invalid_argument("Specify keyword argument 'crystal_system'!");
-        }
-        if (kwargs.contains("crystal_system") and kwargs["crystal_system"].cast<std::string>() != "cubic") {
-            throw std::invalid_argument("Crystal system must be a cubic!");
-        }
         python_structure_dict = structure_dict;
         python_neighbor_dict = neighbor_dict;
         parse_dicts();
@@ -775,13 +763,13 @@ PYBIND11_MODULE(finding_generators, m) {
     m.doc() = "Python bindings for functions in Python";
 
     py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
-    .def(py::init<py::dict, py::dict, py::kwargs>())
+    .def(py::init<py::dict, py::dict>())
     .def("dope_cell", &VirusSimulatorFramework::dope_cell)
     .def("display_cell", &VirusSimulatorFramework::display_cell)
     .def("run_simulation", &VirusSimulatorFramework::run_simulation);
 
     py::class_<AtomPermutatorFramework>(m, "AtomPermutator")
-    .def(py::init<py::dict, py::kwargs>())
+    .def(py::init<py::dict>())
     .def("dope_cell", &AtomPermutatorFramework::dope_cell)
     .def("display_cell", &AtomPermutatorFramework::display_cell)
     .def("run_permutation", &AtomPermutatorFramework::run_permutation);
