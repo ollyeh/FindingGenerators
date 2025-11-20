@@ -62,8 +62,10 @@ vs.run_simulation()
 """
 
 ap = fg.AtomPermutator(structure_dict)
-ap.dope_cell(3, "Sc")
+ap.dope_cell(2, "Sc")
 ap.run_permutation("/Users/oliver/Documents/programming/FindingGenerators/configurations.json")
+
+
 
 #framework.dope_cell(1, "Sc")
 #framework.display_cell()
