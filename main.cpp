@@ -427,13 +427,17 @@ class AtomPermutator{
     std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict_init;
     std::string m_element;
     std::vector<int> m_config;
-    std::vector<std::string> m_configurations = {};
     int m_n_configurations;
 
     public:
+    std::vector<std::map<int, std::pair<std::string, std::array<float, 3>>>> configurations = {};
+    nlohmann::json root;
+    nlohmann::json configuration;
+
     AtomPermutator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr)
         :  m_ptr_structure_dict(structure_dict_ptr)
     {
+        root["configurations"] = nlohmann::json::array();
     }
     //highly problematic, copy the dict and dope the copy
     //we need the undoped dict for the virus simulation
@@ -489,8 +493,9 @@ class AtomPermutator{
         }
     }
 
-    void run_permutation(CellViewer *ptr_cell_viewer) {
+    void run_permutation(CellViewer *ptr_cell_viewer, const std::string *path) {
         m_config.clear();
+
         auto &cell_viewer = *ptr_cell_viewer;
 
         m_n_configurations = binomial(m_ptr_structure_dict->size(), m_picked_swaps.size());
@@ -518,12 +523,19 @@ class AtomPermutator{
             }
 
             update_m_structure_dict();
+            nlohmann::json config;
+            for (auto &[key, val] : *m_ptr_structure_dict) {
+                config[key] = {key, val};
+            }
+            root["configurations"].push_back({i, config});
+
             cell_viewer.update_color_buffer();
             cell_viewer.viewer.update();
-
             ++i;
         } while (std::next_permutation(m_config.begin(), m_config.end()));
         spd::info("Done finding {} permutations", i);
+        spd::info("Dumping configurations to json");
+        std::ofstream(*path) << root.dump();
     }
 };
 
@@ -569,13 +581,11 @@ class AtomPermutatorFramework {
         m_cell_viewer.open_viewer();
     }
 
-    void run_permutation() {
+    void run_permutation(const std::string &path) {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
-        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_atom_permutator.run_permutation(m_cell_viewer_ptr); }));
+        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr, &path] { this->m_atom_permutator.run_permutation(m_cell_viewer_ptr, &path); }));
         m_cell_viewer.open_viewer();
-        //return python_configuration_dict;
-        //m_cell_operator.run_simulation();
     }
 };
 

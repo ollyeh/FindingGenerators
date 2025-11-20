@@ -29,7 +29,7 @@ with open("temp.json", "r") as f:
 
 neighbor_dict = {int(key): val for (key, val) in zip(neighbor_dict.keys(), neighbor_dict.values())}
 
-for i, site in enumerate(rescaled_structure := structures[0]*(20,20,20)):
+for i, site in enumerate(rescaled_structure := structures[0]*(2,2,2)):
     site = site.as_dict()
     structure_dict[i] = {}
 
@@ -56,14 +56,14 @@ print(len(structure_dict.keys()))
 print(neighbor_dict)
 
 """
-vs = fg.VirusSimulator(structure_dict, neighbor_dict, crystal_system="cubic")
+vs = fg.VirusSimulator(structure_dict, neighbor_dict)
 vs.dope_cell(2, "Sc")
 vs.run_simulation()
 """
 
-ap = fg.AtomPermutator(structure_dict, crystal_system="cubic")
-ap.dope_cell(2, "Sc")
-ap.run_permutation()
+ap = fg.AtomPermutator(structure_dict)
+ap.dope_cell(3, "Sc")
+ap.run_permutation("/Users/oliver/Documents/programming/FindingGenerators/configurations.json")
 
 #framework.dope_cell(1, "Sc")
 #framework.display_cell()
