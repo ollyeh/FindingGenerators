@@ -15,17 +15,11 @@ parser = CifParser("rocksalt_alnit.cif")
 
 structures = parser.parse_structures(primitive=False)
 
-sg = SpaceGroup("Fm-3m")
-# x -> x*rotation + translation
-
-rotations = [op.rotation_matrix for op in sg.symmetry_ops]
-translations = [op.translation_vector for op in sg.symmetry_ops]
-
 structure_dict = {}
 neighbor_dict = {}
-with open("temp.json", "r") as f:
-    neighbor_dict = json.load(f)
-    f.close()
+#with open("t.json", "r") as f:
+#    neighbor_dict = json.load(f)
+#    f.close()
 
 neighbor_dict = {int(key): val for (key, val) in zip(neighbor_dict.keys(), neighbor_dict.values())}
 
@@ -46,13 +40,12 @@ for i, site in enumerate(rescaled_structure := structures[0]*(2,2,2)):
 
     structure_dict[i] = {"element": site["species"][0]["element"], "frac_coord": frac_coord}
 
-#with open("temp.json", "w") as f:
-#    json.dump(neighbor_dict, f)
-#    f.close()
+with open("temp.json", "w") as f:
+    json.dump(neighbor_dict, f)
+    f.close()
 
 structure_dict[i] = {"element": site["species"][0]["element"], "frac_coord": site["abc"]}
 print(len(structure_dict.keys()))
-
 print(neighbor_dict)
 
 """
@@ -62,9 +55,8 @@ vs.run_simulation()
 """
 
 ap = fg.AtomPermutator(structure_dict)
-ap.dope_cell(2, "Sc")
+ap.dope_cell(3, "Sc")
 ap.run_permutation("/Users/oliver/Documents/programming/FindingGenerators/configurations.json")
-
 
 
 #framework.dope_cell(1, "Sc")
@@ -74,4 +66,4 @@ ap.run_permutation("/Users/oliver/Documents/programming/FindingGenerators/config
 #framework.run_simulation()
 
 #framework.get_permutations(1, "Sc")
-#framework.dope_cell(4, "Sc")
+#framework.dope_cell(4, "Sc")^

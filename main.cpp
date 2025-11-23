@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <chrono>
+#include <iomanip>
 
 #include <map>
 #include <set>
@@ -26,7 +27,6 @@
 #include <ranges>
 
 #include "spdlog/spdlog.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 
 #include "thread_pool.hpp"
 #include "3rd_party/nlohmann/json.hpp"
@@ -161,8 +161,20 @@ public:
         viewer.exit();
     }
 
+    void show_property_stats() {
+        int index = 0;
+        //viewer.current_model()->property_stats(std::cout);
+        auto positions = m_atoms_shared_ptr->get_vertex_property<easy3d::vec3>("v:point");
+        for (auto vertex : m_atoms.vertices()) {
+            auto &entry = m_ptr_structure_dict->at(index);
+            positions[vertex] = easy3d::vec3(entry.second[0], entry.second[1], entry.second[2]);
+            ++index;
+        }
+        viewer.current_model()->renderer()->update();
+    }
+
     void update_color_buffer() {
-        size_t index = 0;
+        int index = 0;
         //auto colors = m_atoms.vertex_property<easy3d::vec3>("v:color");
         auto colors = m_atoms_shared_ptr->get_vertex_property<easy3d::vec3>("v:color");
         for (auto vertex : m_atoms.vertices()) {
@@ -425,13 +437,13 @@ class AtomPermutator{
     std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict_init;
     std::string m_element;
     std::vector<int> m_config;
-    int m_n_configurations;
+    int m_n_configurations{};
 
     public:
     std::vector<std::map<int, std::pair<std::string, std::array<float, 3>>>> configurations = {};
     nlohmann::json root;
 
-    AtomPermutator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr)
+    explicit AtomPermutator(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr)
         :  m_ptr_structure_dict(structure_dict_ptr)
     {
     }
@@ -767,20 +779,234 @@ class VirusSimulatorFramework {
 };
 
 class GeneratorFinder {
+    // this natural beauty maps long strings of element labels to m_structure_dict's pointer
+    std::map<std::string, std::shared_ptr<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>> m_element_hash_to_ptr;
+    std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> *m_transformations_dict_ptr;
+    std::map<std::string, int> m_position_hash_to_atom_index;
+    std::map<int, std::pair<std::string, std::array<float, 3>>> *m_structure_dict_ptr;
+    std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> m_picked_structure_dict;
+    std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> m_working_structure_dict;
+
+    std::vector<std::string> m_found_element_hashes = {};
+
+    std::array<float, 3> m_center_frac_coord;
+
+    nlohmann::json m_json;
+
+
     public:
-    explicit GeneratorFinder(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr) {
+    explicit GeneratorFinder(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, const std::string &path, std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> *transformations_dict_ptr) {
+        m_structure_dict_ptr = structure_dict_ptr;
+        m_transformations_dict_ptr = transformations_dict_ptr;
+        read_parse_json(std::string(path));
+        build_element_hash_dict();
+
+        // initialize m_structure_dict with the first configuration so that the cell_viewer can initialize properly
+        *m_structure_dict_ptr = pop_last_column(m_element_hash_to_ptr[m_element_hash_to_ptr.begin()->first].get());
+        if (m_structure_dict_ptr->size() == 0) {
+            throw(std::range_error("CellViewer cannot initialize properly as m_structure_dict has size 0. Error thrown in constructor of GeneratorFinder."));
+        }
+    }
+
+    void read_parse_json(std::string path) {
+        // read the configuration json file whose path is "path_to_json"
+        spd::info("Reading json file for parsing located at {}", path);
+        std::ifstream json_file(path);
+        m_json = nlohmann::json::parse(json_file);
+        spd::info("Successfully parsed json");
+    }
+
+    void build_position_hash_to_atom_index() {
+        // map the position hash from m_picked_structure_dict to the atom index
+        for (auto &[key, val] : m_picked_structure_dict) {
+            const auto &[element, frac_coord, frac_coord_hash] = val;
+            m_position_hash_to_atom_index[frac_coord_hash] = key;
+        }
+    }
+
+    float wrap_back_into_cell(float x) {
+        return x - std::floor(x);
+    }
+
+    void apply_transformation(const std::array<float, 3> *trans_ptr, const std::array<std::array<float, 3>, 3> *rot_ptr, std::array<float, 3> *frac_coord_ptr) {
+        std::array<float, 3> outer_temp{};
+        for (int i = 0; i < 3; i++) {
+            float inner_temp = 0;
+            for (int j = 0; j < 3; j++) {
+                inner_temp += (*rot_ptr)[i][j] * (*frac_coord_ptr)[j];// - m_center_frac_coord[j]);
+            }
+            outer_temp[i] = wrap_back_into_cell(inner_temp + (*trans_ptr)[i]);// + m_center_frac_coord[i]);
+        }
+        *frac_coord_ptr = outer_temp;
+    }
+
+    static std::string construct_element_hash(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict) {
+        std::string element_hash;
+        for (auto &[key, val] : *structure_dict) {
+            auto [element, frac_coord] = val;
+            element_hash += element;
+        }
+        return element_hash;
+    }
+
+    void apply_transformations(CellViewer *cell_viewer_ptr) {
+        spd::info("Applying {} transformations", m_transformations_dict_ptr->size());
+        m_found_element_hashes = {};
+        for (auto &[transform_key, transform_val] : *m_transformations_dict_ptr) {
+            if constexpr (enable_debug_logging) {
+                spd::info("Showing picked transformation");
+            }
+            *m_structure_dict_ptr = pop_last_column(&m_picked_structure_dict);
+            cell_viewer_ptr->show_property_stats();
+            cell_viewer_ptr->update_color_buffer();
+            cell_viewer_ptr->viewer.update();
+            //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            std::vector<std::string> new_position_hashes = {};
+            m_working_structure_dict = m_picked_structure_dict;
+            //spd::info("Before");
+            //output_frac_coord(&m_working_structure_dict);
+            for (auto &[key, val] : m_working_structure_dict) {
+                auto &[element, frac_coord, frac_coord_hash] = val;
+                apply_transformation(&transform_val.first, &transform_val.second, &frac_coord);
+                // directly append transform new position to hash and emplace back
+                std::string position_hash = std::format("[{:.7f},{:.7f},{:.7f}]", frac_coord[0], frac_coord[1], frac_coord[2]);
+                new_position_hashes.emplace_back(position_hash);
+
+                //spd::info("Position hash: {}", position_hash);
+            }
+            //spd::info("After");
+            //output_frac_coord(&m_working_structure_dict);
+            if constexpr (enable_debug_logging) {
+                spd::info("Transformation with key {} successful", transform_key);
+            }
+
+            /*
+            *m_structure_dict_ptr = pop_last_column(&m_working_structure_dict);
+            if constexpr (enable_debug_logging) {
+                spd::info("Showing transformed configuration!");
+            }
+            cell_viewer_ptr->show_property_stats();
+            cell_viewer_ptr->update_color_buffer();
+            cell_viewer_ptr->viewer.update(); */
+
+            int idx = 0;
+            for (const auto& new_position_hash : new_position_hashes) {
+                auto &atom_index = m_position_hash_to_atom_index.at(new_position_hash);
+                //spd::info("Atom index: {}", atom_index);
+                auto &[element, frac_coord, frac_coord_hash]= m_picked_structure_dict.at(atom_index);
+                (*m_structure_dict_ptr)[idx].first = element;
+                //spd::info("Element: {}", element);
+                ++idx;
+            }
+
+            // only emplace back unique element hashes
+            std::string constr_element_hash = construct_element_hash(m_structure_dict_ptr);
+            //spd::info("Constructed element hash: {}", constr_element_hash);
+            if (m_found_element_hashes.end() == std::find(m_found_element_hashes.begin(), m_found_element_hashes.end(), constr_element_hash)) {
+            //if (true) {
+                m_found_element_hashes.emplace_back(constr_element_hash);
+            }
+            //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+
+    static std::map<int, std::pair<std::string, std::array<float, 3>>> pop_last_column(std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> *structure_dict) {
+        std::map<int, std::pair<std::string, std::array<float, 3>>> temp;
+        for (auto &[key, val] : *structure_dict) {
+            auto [element, frac_coord, frac_coord_hash] = val;
+            temp[key] = std::make_pair(element, frac_coord);
+        }
+        return temp;
+    }
+
+    void calculate_set_difference() {
+        for (auto found_element_hash : m_found_element_hashes) {
+            //spd::info("Element hash: {}", found_element_hash);
+            m_element_hash_to_ptr.erase(found_element_hash);
+        }
+        spd::info("Found element hashes: {}", m_found_element_hashes.size());
+        spd::info("Remaining element_hashes: {}", m_element_hash_to_ptr.size());
+    }
+
+
+    void start_reduction(CellViewer *cell_viewer_ptr) {
+        bool x = true;
+        int h = 0;
+        do {
+            spd::info("Starting reduction");
+            // outer while element_hash_to_ptr.size() > 0 --> pick config
+            // pick_configuration
+            m_picked_structure_dict = *m_element_hash_to_ptr[m_element_hash_to_ptr.begin()->first];
+            build_position_hash_to_atom_index();
+            apply_transformations(cell_viewer_ptr);
+            calculate_set_difference();
+            // calculate_set_difference();
+            x = false;
+            ++h;
+        //} while (x);
+        } while (!m_element_hash_to_ptr.empty());
+        spd::info("Finished reduction with {} found configurations", h);
+    }
+
+    void calculate_center_frac_coord() {
+        float x_temp = 0;
+        float y_temp = 0;
+        float z_temp = 0;
+        // check if all configurations have the same number of atoms, if not throw exception TO DO!!!!!!!
+        auto &first_config_structure_dict = m_element_hash_to_ptr.begin()->second;
+        float size = first_config_structure_dict->size();
+
+        spd::info("Size: {}", size);
+        for (auto &[key, val] : *first_config_structure_dict) {
+            auto &[element, frac_coord, frac_coord_hash] = val;
+            x_temp += frac_coord[0];
+            y_temp += frac_coord[1];
+            z_temp += frac_coord[2];
+        }
+        m_center_frac_coord = {x_temp/size, y_temp/size, z_temp/size};
+    }
+
+    static void output_frac_coord(std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> *structure_dict) {
+        for (auto &[key, val] : *structure_dict) {
+            auto &[element, frac_coord, frac_coord_hash] = val;
+            std::cout << "Atom " << key << std::endl;
+            for (int i= 0; i < 3; i++) {
+                std::cout << frac_coord[i] << " ";
+            }
+            std::cout << "................" << std::endl;
+        }
+    }
+
+    void build_element_hash_dict() {
+        int configuration_index = 0;
+        for (auto &configuration : m_json) {
+            int atom_index = 0;
+            std::string element_hash;
+            std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> structure_dict;
+            for (auto &atom : configuration) {
+                element_hash += atom.at("element");
+                // structure dict is comprised of atom_index (key) -> element, frac_coord, frac_coord_hash
+                auto element = static_cast<std::string>(atom.at("element"));
+                auto frac_coord = static_cast<std::array<float, 3>>(atom.at("frac_coord"));
+                //auto frac_coord_hash = static_cast<std::string>(atom.at("frac_coord"));
+                //std::string frac_coord_hash = "["+std::to_string(frac_coord[0])+","+std::to_string(frac_coord[1])+","+std::to_string(frac_coord[2])+"]";
+                std::string frac_coord_hash = std::format("[{:.7f},{:.7f},{:.7f}]", frac_coord[0], frac_coord[1], frac_coord[2]);
+                //spd::info(frac_coord_hash);
+                structure_dict[atom_index] = std::make_tuple(element, frac_coord, frac_coord_hash);
+                ++atom_index;
+            }
+            auto structure_dict_ptr = std::make_shared<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>(structure_dict);
+            m_element_hash_to_ptr[element_hash] = structure_dict_ptr;
+            ++configuration_index;
+        }
     }
 };
 
 class GeneratorFinderFramework {
     std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict;
-
-    // this natural beauty maps long strings of element labels to m_structure_dict's pointer
-    std::map<std::string, std::shared_ptr<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>> m_hash_to_ptr;
-
     // m_transformation is a vector (member variable) that contains .first -> translation vector and .second -> rotation matrix
     std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> m_transformations_dict;
-    nlohmann::json m_json;
 
     GeneratorFinder m_generator_finder;
     CellViewer m_cell_viewer;
@@ -792,13 +1018,11 @@ class GeneratorFinderFramework {
     py::dict python_transformations_dict;
 
     explicit GeneratorFinderFramework(const py::str &path, const py::dict &transformations)
-    : m_generator_finder(&m_structure_dict), m_cell_viewer(&m_structure_dict)
+    : m_generator_finder(&m_structure_dict, std::string(path), &m_transformations_dict), m_cell_viewer(&m_structure_dict)
     {
-        read_parse_json(std::string(path));
-        build_hash_dicts();
         python_transformations_dict = transformations;
         parse_transformations();
-        check_transformation_parsing();
+        //check_transformation_parsing();
     }
 
     void parse_transformations() {
@@ -827,38 +1051,12 @@ class GeneratorFinderFramework {
         }
     }
 
-    void build_hash_dicts() {
-        int configuration_index = 0;
-        for (auto &configuration : m_json) {
-            int atom_index = 0;
-            std::string hash;
-            std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> structure_dict;
-            for (auto &atom : configuration) {
-                hash += atom.at("element");
-                // structure dict is comprised of atom_index (key) -> element, frac_coord, frac_coord_hash
-                auto element = static_cast<std::string>(atom.at("element"));
-                auto frac_coord = static_cast<std::array<float, 3>>(atom.at("frac_coord"));
-                auto frac_coord_hash = atom.at("frac_coord").dump();
-                //structure_dict[atom_index] = std::make_tuple(element, frac_coord, frac_coord_hash);
-                ++atom_index;
-            }
-            auto structure_dict_ptr = std::make_shared<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>(structure_dict);
-            m_hash_to_ptr[hash] = structure_dict_ptr;
-            ++configuration_index;
-        }
+    void start_reduction() {
+        m_cell_viewer.initialize_viewer();
+        auto m_cell_viewer_ptr = &m_cell_viewer;
+        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_generator_finder.start_reduction(m_cell_viewer_ptr); }));
+        m_cell_viewer.open_viewer();
     }
-
-    void read_parse_json(std::string path) {
-        // read the configuration json file whose path is "path_to_json"
-        //spd::info("Reading json at {}", path_to_json);
-        spd::info("Reading json file for parsing located at {}", path);
-        std::ifstream json_file(path);
-        m_json = nlohmann::json::parse(json_file);
-        spd::info("Successfully parsed json");
-    }
-
-
-
 
 };
 
@@ -878,5 +1076,6 @@ PYBIND11_MODULE(finding_generators, m) {
     .def("run_permutation", &AtomPermutatorFramework::run_permutation);
 
     py::class_<GeneratorFinderFramework>(m, "GeneratorFinder")
-    .def(py::init<py::str, py::dict>());
+    .def(py::init<py::str, py::dict>())
+    .def("start_search", &GeneratorFinderFramework::start_reduction);
 }
