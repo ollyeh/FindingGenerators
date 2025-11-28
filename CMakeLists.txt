@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.31)
 project(FindingGenerators)
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
+
+# easy3d v2.6.1     https://github.com/LiangliangNan/Easy3D
+# pybind11 v3.0.1   https://github.com/pybind/pybind11
+# spdlog v1.16.0    https://github.com/gabime/spdlog
+# nlohmann v3.12.0  https://github.com/nlohmann/json
 
 set(Python3_EXECUTABLE "/Users/oliver/Documents/programming/FindingGenerators/.venv/bin/python3")
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
@@ -40,6 +46,14 @@ target_link_libraries(finding_generators
         spdlog
 )
 
+set(JSON_DIR "${CMAKE_SOURCE_DIR}/json")
+message(STATUS "Using json found at: ${JSON_DIR}")
+add_subdirectory(${JSON_DIR})
+
+target_link_libraries(finding_generators
+        PUBLIC
+        nlohmann_json::nlohmann_json
+)
 
 set(INIT_PY "${CMAKE_SOURCE_DIR}/package/__init__.py")
 if(NOT EXISTS ${INIT_PY})
