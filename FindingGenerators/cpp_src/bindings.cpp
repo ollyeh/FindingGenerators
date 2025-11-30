@@ -1109,5 +1109,5 @@ PYBIND11_MODULE(finding_generators, m) {
 
     py::class_<GeneratorFinderFramework>(m, "GeneratorFinder")
     .def(py::init<py::str, py::dict>())
-    .def("start_search", &GeneratorFinderFramework::start_reduction);
+    .def("start_reduction", &GeneratorFinderFramework::start_reduction);
 }
