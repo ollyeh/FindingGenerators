@@ -1,5 +1,12 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.5.0",
+    "pybind11 (>=3.0.1,<4.0.0)",
+]
+build-backend = "scikit_build_core.build"
+
 [project]
-name = "findinggenerators"
+name = "finding_generators"
 version = "0.1.0"
 description = ""
 authors = [
@@ -10,11 +17,10 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "pymatgen (>=2025.10.7,<2026.0.0)",
     "ase (>=3.26.0,<4.0.0)",
-    "pybind11 (>=3.0.1,<4.0.0)",
     "numpy (>=2.3.5,<3.0.0)"
 ]
 
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.scikit-build]
+cmake.source-dir = "FindingGenerators"
+wheel.packages = ["FindingGenerators"]
+cmake.verbose = true
