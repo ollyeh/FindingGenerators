@@ -11,16 +11,19 @@
 #include <stdexcept>
 #include <random>
 #include <algorithm>
+#include <fstream>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#if GRAPHICS
 #include <easy3d/renderer/drawable.h>
 #include <easy3d/renderer/drawable_lines.h>
 #include <easy3d/viewer/viewer.h>
 #include "easy3d/core/point_cloud.h"
 #include "easy3d/renderer/drawable_points.h"
 #include "easy3d/renderer/renderer.h"
+#endif
 
 #include <queue>
 #include <future>
@@ -29,7 +32,8 @@
 #include "spdlog/spdlog.h"
 
 #include "thread_pool.hpp"
-#include "3rd_party/nlohmann/json.hpp"
+#include "nlohmann/json.hpp"
+#include "spdlog/fmt/bundled/chrono.h"
 
 namespace py = pybind11;
 namespace spd = spdlog;
@@ -48,6 +52,7 @@ unsigned long long binomial(unsigned n, unsigned k) {
     return (unsigned long long) result;
 }
 
+#if GRAPHICS
 std::map<std::string, easy3d::vec3> colors = {
     {"Al", easy3d::vec3(1.0f, 0.0f, 0.0f)},
     {"N", easy3d::vec3(0.0f, 1.0f, 0.0f)},
@@ -64,7 +69,6 @@ class CellViewer {
     std::map<std::string, easy3d::vec3> m_unique_element_colors;
     easy3d::PointCloud m_atoms;
     std::shared_ptr<easy3d::PointCloud> m_atoms_shared_ptr;
-
 public:
     easy3d::Viewer viewer;
 
@@ -188,6 +192,9 @@ public:
         }
     }
 };
+#else
+class CellViewer;
+#endif
 
 class Agent {
     int m_state = 0;
@@ -537,9 +544,10 @@ class AtomPermutator{
                 ++atom_index;
             }
             root[std::to_string(configuration_index)] = configuration;
-
+            #if GRAPHICS
             cell_viewer.update_color_buffer();
             cell_viewer.viewer.update();
+            #endif
             ++configuration_index;
         } while (std::next_permutation(m_config.begin(), m_config.end()));
         spd::info("Done finding {} permutations", configuration_index);
@@ -553,7 +561,9 @@ class AtomPermutatorFramework {
     std::map<int, std::vector<int>> m_neighbor_dict;
 
     AtomPermutator m_atom_permutator;
+    #if GRAPHICS
     CellViewer m_cell_viewer;
+    #endif
 
     public:
     ThreadPool thread_pool{1};
@@ -565,7 +575,10 @@ class AtomPermutatorFramework {
     // pass the address of the map to the individual objects
     // the map is still owned by Framework
     AtomPermutatorFramework(const py::dict &structure_dict)
-        : m_atom_permutator(&m_structure_dict), m_cell_viewer(&m_structure_dict)
+        : m_atom_permutator(&m_structure_dict)
+    #if GRAPHICS
+    , m_cell_viewer(&m_structure_dict)
+    #endif
     {
         python_structure_dict = structure_dict;
         parse_dicts();
@@ -586,16 +599,19 @@ class AtomPermutatorFramework {
         m_atom_permutator.dope_cell(n_swaps, element);
     }
 
-    void display_cell() {
-        m_cell_viewer.open_viewer();
-    }
-
+    #if GRAPHICS
     void run_permutation(const std::string &path) {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
         results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr, &path] { this->m_atom_permutator.run_permutation(m_cell_viewer_ptr, &path); }));
         m_cell_viewer.open_viewer();
     }
+    #else
+    void run_permutation(const std::string &path) {
+        m_atom_permutator.run_permutation(nullptr, &path);
+    }
+    #endif
+
 };
 
 class VirusSimulator {
@@ -689,8 +705,10 @@ class VirusSimulator {
                 spd::info("Number of found configurations {}", n_found_configs);
             }
             m_grid.update_simulation();
+#if GRAPHICS
             cell_viewer.update_color_buffer();
             cell_viewer.viewer.update();
+#endif
             update_m_structure_dict();
 
             //here write every m_structure_dict to file or append elements to vector
@@ -726,7 +744,9 @@ class VirusSimulatorFramework {
     std::map<int, std::vector<int>> m_neighbor_dict;
 
     VirusSimulator m_virus_simulator;
+#if GRAPHICS
     CellViewer m_cell_viewer;
+#endif
 
     public:
     ThreadPool thread_pool{1};
@@ -738,7 +758,10 @@ class VirusSimulatorFramework {
     // pass the address of the map to the individual objects
     // the map is still owned by Framework
     VirusSimulatorFramework(const py::dict &structure_dict, const py::dict &neighbor_dict)
-        : m_virus_simulator(&m_structure_dict, &m_neighbor_dict), m_cell_viewer(&m_structure_dict)
+        : m_virus_simulator(&m_structure_dict, &m_neighbor_dict)
+#if GRAPHICS
+    , m_cell_viewer(&m_structure_dict)
+#endif
     {
         python_structure_dict = structure_dict;
         python_neighbor_dict = neighbor_dict;
@@ -762,11 +785,7 @@ class VirusSimulatorFramework {
     void dope_cell(int n_swaps, const std::string &element) {
         m_virus_simulator.dope_cell(n_swaps, element);
     }
-
-    void display_cell() {
-        m_cell_viewer.open_viewer();
-    }
-
+#if GRAPHICS
     void run_simulation() {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
@@ -776,6 +795,11 @@ class VirusSimulatorFramework {
 
         //m_cell_operator.run_simulation();
     }
+#else
+    void run_simulation() {
+        m_virus_simulator.run_simulation(nullptr);
+    }
+    #endif
 };
 
 class GeneratorFinder {
@@ -857,11 +881,12 @@ class GeneratorFinder {
                 spd::info("Showing picked transformation");
             }
             *m_structure_dict_ptr = pop_last_column(&m_picked_structure_dict);
+            #if GRAPHICS
             cell_viewer_ptr->show_property_stats();
             cell_viewer_ptr->update_color_buffer();
             cell_viewer_ptr->viewer.update();
             //std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
+            #endif
             std::vector<std::string> new_position_hashes = {};
             m_working_structure_dict = m_picked_structure_dict;
             //spd::info("Before");
@@ -1009,7 +1034,9 @@ class GeneratorFinderFramework {
     std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> m_transformations_dict;
 
     GeneratorFinder m_generator_finder;
+    #if GRAPHICS
     CellViewer m_cell_viewer;
+    #endif
 
     public:
     ThreadPool thread_pool{1};
@@ -1018,7 +1045,10 @@ class GeneratorFinderFramework {
     py::dict python_transformations_dict;
 
     explicit GeneratorFinderFramework(const py::str &path, const py::dict &transformations)
-    : m_generator_finder(&m_structure_dict, std::string(path), &m_transformations_dict), m_cell_viewer(&m_structure_dict)
+    : m_generator_finder(&m_structure_dict, std::string(path), &m_transformations_dict)
+    #if GRAPHICS
+    , m_cell_viewer(&m_structure_dict)
+    #endif
     {
         python_transformations_dict = transformations;
         parse_transformations();
@@ -1050,14 +1080,18 @@ class GeneratorFinderFramework {
             }
         }
     }
-
+    #if GRAPHICS
     void start_reduction() {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
         results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_generator_finder.start_reduction(m_cell_viewer_ptr); }));
         m_cell_viewer.open_viewer();
     }
-
+    #else
+    void start_reduction() {
+        m_generator_finder.start_reduction(nullptr);
+    }
+    #endif
 };
 
 PYBIND11_MODULE(finding_generators, m) {
@@ -1066,13 +1100,11 @@ PYBIND11_MODULE(finding_generators, m) {
     py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
     .def(py::init<py::dict, py::dict>())
     .def("dope_cell", &VirusSimulatorFramework::dope_cell)
-    .def("display_cell", &VirusSimulatorFramework::display_cell)
     .def("run_simulation", &VirusSimulatorFramework::run_simulation);
 
     py::class_<AtomPermutatorFramework>(m, "AtomPermutator")
     .def(py::init<py::dict>())
     .def("dope_cell", &AtomPermutatorFramework::dope_cell)
-    .def("display_cell", &AtomPermutatorFramework::display_cell)
     .def("run_permutation", &AtomPermutatorFramework::run_permutation);
 
     py::class_<GeneratorFinderFramework>(m, "GeneratorFinder")
