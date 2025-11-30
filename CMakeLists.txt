@@ -2,14 +2,21 @@ cmake_minimum_required(VERSION 3.31)
 project(FindingGenerators)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
+include(FetchContent)
 
-# easy3d v2.6.1     https://github.com/LiangliangNan/Easy3D
-# pybind11 v3.0.1   https://github.com/pybind/pybind11
-# spdlog v1.16.0    https://github.com/gabime/spdlog
-# nlohmann v3.12.0  https://github.com/nlohmann/json
+set(PYBIND11_VERSION 3.0.1)
+FetchContent_Declare(
+        pybind11
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG master
+        FIND_PACKAGE_ARGS ${PYBIND11_VERSION}
+)
+FetchContent_MakeAvailable(pybind11)
 
 set(Python3_EXECUTABLE "/Users/oliver/Documents/programming/FindingGenerators/.venv/bin/python3")
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+
+pybind11_add_module(finding_generators SHARED main.cpp)
 
 execute_process(
         COMMAND ${Python3_EXECUTABLE} -m pybind11 --cmakedir
@@ -17,38 +24,55 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(pybind11_DIR ${PYBIND11_CMAKE_DIR})
+if (GRAPHICS)
+    message(STATUS "Graphics enabled — building with Easy3D")
+    target_compile_definitions(finding_generators PRIVATE GRAPHICS=1)
+    set(EASY3D_VERSION 2.6.1)
+    FetchContent_Declare(
+            easy3d
+            GIT_REPOSITORY https://github.com/LiangliangNan/Easy3D.git
+            GIT_TAG main
+            FIND_PACKAGE_ARGS ${EASY3D_VERSION}
+    )
+    set(EASY3D_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(EASY3D_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(easy3d)
+    target_link_libraries(finding_generators
+            PUBLIC
+            easy3d::core
+            easy3d::renderer
+            easy3d::viewer
+            easy3d::gui
+    )
+else()
+    message(STATUS "Graphics disabled — building WITHOUT Easy3D")
+    target_compile_definitions(finding_generators PRIVATE GRAPHICS=0)
+endif()
 
-message(STATUS "Using pybind11 found at: ${pybind11_DIR}")
-add_subdirectory(pybind11)
 
-# Easy3D
-set(EASY3D_DIR "${CMAKE_SOURCE_DIR}/Easy3D")
-message(STATUS "Using Easy3D found at: ${EASY3D_DIR}")
-add_subdirectory(${EASY3D_DIR})
 
-pybind11_add_module(finding_generators SHARED main.cpp)
-
-target_link_libraries(finding_generators
-        PUBLIC
-        easy3d::core
-        easy3d::renderer
-        easy3d::viewer
-        easy3d::gui
+set(SPDLOG_VERSION 1.16.0)
+FetchContent_Declare(
+        spdlog
+        GIT_REPOSITORY https://github.com/gabime/spdlog.git
+        GIT_TAG v1.x
+        FIND_PACKAGE_ARGS ${SPDLOG_VERSION}
 )
-
-set(SPDLOG_DIR "${CMAKE_SOURCE_DIR}/spdlog")
-message(STATUS "Using spdlog found at: ${SPDLOG_DIR}")
-add_subdirectory(${SPDLOG_DIR})
+FetchContent_MakeAvailable(spdlog)
 
 target_link_libraries(finding_generators
         PUBLIC
         spdlog
 )
 
-set(JSON_DIR "${CMAKE_SOURCE_DIR}/json")
-message(STATUS "Using json found at: ${JSON_DIR}")
-add_subdirectory(${JSON_DIR})
+set(JSON_VERSION 3.12.0)
+FetchContent_Declare(
+        json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG develop
+        FIND_PACKAGE_ARGS ${JSON_VERSION}
+)
+FetchContent_MakeAvailable(json)
 
 target_link_libraries(finding_generators
         PUBLIC
