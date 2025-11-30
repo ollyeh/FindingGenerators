@@ -2,7 +2,7 @@ import time
 
 from pymatgen.io.cif import CifParser
 from pymatgen.symmetry.groups import PointGroup, SpaceGroup
-from package import finding_generators as fg
+from FindingGenerators.finding_generators import AtomPermutator, GeneratorFinder
 from ase import Atoms, Atom
 from ase.geometry import cellpar_to_cell
 from ase.io import write
@@ -39,7 +39,7 @@ def run_permutation(structure):
 
     structure_dict[i] = {"element": site["species"][0]["element"], "frac_coord": site["abc"]}
 
-    ap = fg.AtomPermutator(structure_dict)
+    ap = AtomPermutator(structure_dict)
     ap.dope_cell(2, "Sc")
     ap.run_permutation("/Users/oliver/Documents/programming/FindingGenerators/all_configurations.json")
 
@@ -62,7 +62,7 @@ def run_reduction():
 
         i += 1
 
-    gf = fg.GeneratorFinder("/Users/oliver/Documents/programming/FindingGenerators/all_configurations.json", transformations_dict)
+    gf = GeneratorFinder("/Users/oliver/Documents/programming/FindingGenerators/all_configurations.json", transformations_dict)
     gf.start_reduction("/Users/oliver/Documents/programming/FindingGenerators/ired_configurations.json")
 
 def rebuild_to_cif(lattice_matrix):
@@ -85,5 +85,5 @@ def rebuild_to_cif(lattice_matrix):
 if __name__ == "__main__":
     structures, lattice_matrix = parse_inp((3, 3, 3))
     run_permutation(structures)
-    run_reduction()
+    #run_reduction()
     #rebuild_to_cif(lattice_matrix)
