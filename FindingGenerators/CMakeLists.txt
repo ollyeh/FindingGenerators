@@ -15,7 +15,7 @@ FetchContent_MakeAvailable(pybind11)
 
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-pybind11_add_module(finding_generators SHARED bindings.cpp)
+pybind11_add_module(finding_generators SHARED cpp_src/bindings.cpp)
 
 execute_process(
         COMMAND ${Python3_EXECUTABLE} -m pybind11 --cmakedir
