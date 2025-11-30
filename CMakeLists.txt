@@ -13,7 +13,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11)
 
-set(Python3_EXECUTABLE "/Users/oliver/Documents/programming/FindingGenerators/.venv/bin/python3")
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 pybind11_add_module(finding_generators SHARED main.cpp)
@@ -49,8 +48,6 @@ else()
     target_compile_definitions(finding_generators PRIVATE GRAPHICS=0)
 endif()
 
-
-
 set(SPDLOG_VERSION 1.16.0)
 FetchContent_Declare(
         spdlog
@@ -79,7 +76,7 @@ target_link_libraries(finding_generators
         nlohmann_json::nlohmann_json
 )
 
-set(INIT_PY "${CMAKE_SOURCE_DIR}/package/__init__.py")
+set(INIT_PY "${CMAKE_SOURCE_DIR}/compiled_cpp/__init__.py")
 if(NOT EXISTS ${INIT_PY})
     file(WRITE ${INIT_PY} "")
 endif()
@@ -90,5 +87,5 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/package
         COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:finding_generators>
-        ${CMAKE_SOURCE_DIR}/package/
+        ${CMAKE_SOURCE_DIR}/compiled_cpp/
 )
