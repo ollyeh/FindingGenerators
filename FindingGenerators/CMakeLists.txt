@@ -4,6 +4,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
 include(FetchContent)
 
+set(BUILD_SHARED_LIBS OFF)
+
 set(PYBIND11_VERSION 3.0.1)
 FetchContent_Declare(
         pybind11
@@ -25,7 +27,7 @@ execute_process(
 
 if (GRAPHICS)
     message(STATUS "Graphics enabled — building with Easy3D")
-    target_compile_definitions(finding_generators PRIVATE GRAPHICS=1)
+	target_compile_definitions(finding_generators PUBLIC GRAPHICS=1)
     set(EASY3D_VERSION 2.6.1)
     FetchContent_Declare(
             easy3d
@@ -37,12 +39,20 @@ if (GRAPHICS)
     set(EASY3D_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(easy3d)
     target_link_libraries(finding_generators
-            PUBLIC
+	    PRIVATE
             easy3d::core
             easy3d::renderer
             easy3d::viewer
             easy3d::gui
-    )
+	)
+# Directory where Easy3D is built
+get_target_property(EASY3D_DIR easy3d_core BINARY_DIR)
+message(STATUS "Easy3D dir: ${EASY3D_DIR}")
+install(
+    DIRECTORY $EASY3D_DIR/
+    DESTINATION ${SKBUILD_PLATLIB_DIR}
+    FILES_MATCHING PATTERN "*.so" PATTERN "*.dylib" PATTERN "*.dll"
+)
 else()
     message(STATUS "Graphics disabled — building WITHOUT Easy3D")
     target_compile_definitions(finding_generators PRIVATE GRAPHICS=0)
