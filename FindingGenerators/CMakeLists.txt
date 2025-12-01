@@ -16,7 +16,15 @@ FetchContent_MakeAvailable(pybind11)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 pybind11_add_module(finding_generators SHARED cpp_src/bindings.cpp)
-
+if(APPLE)
+    set_target_properties(finding_generators PROPERTIES
+        INSTALL_RPATH "@loader_path"
+        BUILD_RPATH "@loader_path"
+    )
+    target_link_options(finding_generators PRIVATE
+        "-Wl,-rpath,@loader_path"
+    )
+endif()
 execute_process(
         COMMAND ${Python3_EXECUTABLE} -m pybind11 --cmakedir
         OUTPUT_VARIABLE PYBIND11_CMAKE_DIR
@@ -50,6 +58,12 @@ if (GRAPHICS)
             COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::renderer>  ${CMAKE_SOURCE_DIR}
             COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::viewer>    ${CMAKE_SOURCE_DIR}
             COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::gui>       ${CMAKE_SOURCE_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::fileio>       ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::core>      ${CMAKE_SOURCE_DIR}/libeasy3d_core.2.dylib
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::renderer>  ${CMAKE_SOURCE_DIR}/libeasy3d_renderer.2.dylib
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::viewer>    ${CMAKE_SOURCE_DIR}/libeasy3d_viewer.2.dylib
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::gui>       ${CMAKE_SOURCE_DIR}/libeasy3d_gui.2.dylib
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::fileio>       ${CMAKE_SOURCE_DIR}/libeasy3d_fileio.2.dylib
     )
 else()
     message(STATUS "Graphics disabled — building WITHOUT Easy3D")
