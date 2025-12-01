@@ -44,7 +44,6 @@ if (GRAPHICS)
             easy3d::renderer
             easy3d::viewer
             easy3d::gui
-<<<<<<< HEAD
     )
     add_custom_command(
             TARGET finding_generators
@@ -54,17 +53,6 @@ if (GRAPHICS)
             COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::viewer>    ${CMAKE_SOURCE_DIR}
             COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::gui>       ${CMAKE_SOURCE_DIR}
     )
-=======
-	)
-# Directory where Easy3D is built
-get_target_property(EASY3D_DIR easy3d_core BINARY_DIR)
-message(STATUS "Easy3D dir: ${EASY3D_DIR}")
-install(
-    DIRECTORY $EASY3D_DIR/
-    DESTINATION ${SKBUILD_PLATLIB_DIR}
-    FILES_MATCHING PATTERN "*.so" PATTERN "*.dylib" PATTERN "*.dll"
-)
->>>>>>> 33cfb9ee484533a6c50f133e163be2972c6ceb64
 else()
     message(STATUS "Graphics disabled — building WITHOUT Easy3D")
     target_compile_definitions(finding_generators PRIVATE GRAPHICS=0)
