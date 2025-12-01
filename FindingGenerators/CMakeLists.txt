@@ -43,6 +43,12 @@ if (GRAPHICS)
             easy3d::viewer
             easy3d::gui
     )
+    add_custom_command(
+            TARGET finding_generators POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${easy3d_BINARY_DIR}/lib
+            $<TARGET_FILE_DIR:finding_generators>
+    )
 else()
     message(STATUS "Graphics disabled — building WITHOUT Easy3D")
     target_compile_definitions(finding_generators PRIVATE GRAPHICS=0)
