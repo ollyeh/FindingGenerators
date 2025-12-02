@@ -51,20 +51,26 @@ if (GRAPHICS)
             easy3d::viewer
             easy3d::gui
     )
-    add_custom_command(
-            TARGET finding_generators
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::core>      ${CMAKE_SOURCE_DIR}
-            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::renderer>  ${CMAKE_SOURCE_DIR}
-            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::viewer>    ${CMAKE_SOURCE_DIR}
-            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::gui>       ${CMAKE_SOURCE_DIR}
-            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::fileio>       ${CMAKE_SOURCE_DIR}
+	add_custom_command(
+	    TARGET finding_generators
+	    POST_BUILD
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::core>      ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::renderer>  ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::viewer>    ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::gui>       ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::fileio>       ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::algo>       ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::kdtree>       ${CMAKE_SOURCE_DIR}
+	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::util>       ${CMAKE_SOURCE_DIR}
 	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::core>      ${CMAKE_SOURCE_DIR}/libeasy3d_core.2.dylib
 	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::renderer>  ${CMAKE_SOURCE_DIR}/libeasy3d_renderer.2.dylib
 	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::viewer>    ${CMAKE_SOURCE_DIR}/libeasy3d_viewer.2.dylib
 	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::gui>       ${CMAKE_SOURCE_DIR}/libeasy3d_gui.2.dylib
 	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::fileio>       ${CMAKE_SOURCE_DIR}/libeasy3d_fileio.2.dylib
-    )
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::algo>       ${CMAKE_SOURCE_DIR}/libeasy3d_algo.2.dylib
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::kdtree>       ${CMAKE_SOURCE_DIR}/libeasy3d_kdtree.2.dylib
+	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::util>       ${CMAKE_SOURCE_DIR}/libeasy3d_util.2.dylib
+	)
 else()
     message(STATUS "Graphics disabled — building WITHOUT Easy3D")
     target_compile_definitions(finding_generators PRIVATE GRAPHICS=0)
