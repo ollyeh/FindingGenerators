@@ -46,10 +46,37 @@ if (GRAPHICS)
             GIT_TAG main
             FIND_PACKAGE_ARGS ${EASY3D_VERSION}
     )
-    set(EASY3D_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(EASY3D_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(easy3d)
-    target_link_libraries(finding_generators
+    set(Easy3D_BUILD_TUTORIALS OFF CACHE BOOL "Disable tutorials" FORCE)
+	set(Easy3D_BUILD_TESTS OFF CACHE BOOL "Disable tests" FORCE)
+	add_custom_command(
+	TARGET finding_generators
+	PRE_BUILD
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/easy3d
+	COMMAND ${CMAKE_COMMAND} -E copy_directory ${Easy3D_SOURCE_DIR}/resources ${CMAKE_SOURCE_DIR}/easy3d/resources
+	)
+
+get_target_property(util_definitions easy3d_util COMPILE_DEFINITIONS)
+
+
+	message(STATUS "Copying compile definitions from easy3d/util's CMakeLists.txt")
+set(new_util_definitions "")
+foreach(def ${util_definitions})
+		if (NOT def MATCHES "BUILD_INTERFACE:Easy3D_RESOURCE_DIR=")
+			list(APPEND new_util_definitions "${def}")
+			    message(STATUS "  - ${def}")
+else()
+				message(STATUS "Redefining compile definition  - ${def}")
+    endif()
+endforeach()
+
+set_target_properties(easy3d_util PROPERTIES
+    INTERFACE_COMPILE_DEFINITIONS "${new_util_definitions}"
+)
+	target_compile_definitions(easy3d_util PUBLIC
+	"$<BUILD_INTERFACE:Easy3D_RESOURCE_DIR=\"${CMAKE_SOURCE_DIR}/easy3d/resources\">")
+
+	target_link_libraries(finding_generators
 	    PRIVATE
             easy3d::core
             easy3d::renderer
@@ -59,9 +86,6 @@ if (GRAPHICS)
 	add_custom_command(
 	    TARGET finding_generators
 	    POST_BUILD
-
-	    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/easy3d
-
 	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::core>      ${CMAKE_SOURCE_DIR}/easy3d
 	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::renderer>  ${CMAKE_SOURCE_DIR}/easy3d
 	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::viewer>    ${CMAKE_SOURCE_DIR}/easy3d
