@@ -1096,15 +1096,17 @@ class GeneratorFinderFramework {
 };
 
 void set_resource_path(const py::str& resource_path) {
+    #if GRAPHICS
     easy3d::resource::initialize(std::string(resource_path));
     spd::info("Resource path initialized");
+    #else()
+    spd::info("Resource path does not exist. Compiled with GRAPHICS=OFF");
+    #endif
 }
 
 PYBIND11_MODULE(finding_generators, m) {
     m.doc() = "Python bindings for functions in Python";
-    #if GRAPHICS
-        m.def("set_resource_path", &set_resource_path);
-    #endif
+    m.def("set_resource_path", &set_resource_path);
 
     py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
     .def(py::init<py::dict, py::dict>())

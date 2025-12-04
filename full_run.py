@@ -2,7 +2,7 @@ import time
 
 from pymatgen.io.cif import CifParser
 from pymatgen.symmetry.groups import PointGroup, SpaceGroup
-from FindingGenerators.finding_generators import AtomPermutator, GeneratorFinder
+from finding_generators.finding_generators import AtomPermutator, GeneratorFinder
 from ase import Atoms, Atom
 from ase.geometry import cellpar_to_cell
 from ase.io import write
