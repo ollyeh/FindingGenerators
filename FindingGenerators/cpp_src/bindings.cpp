@@ -1094,8 +1094,15 @@ class GeneratorFinderFramework {
     #endif
 };
 
+void set_resource_path(std::string &path) {
+	
+}
+
 PYBIND11_MODULE(finding_generators, m) {
     m.doc() = "Python bindings for functions in Python";
+    #if GRAPHICS
+        
+    #endif
 
     py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
     .def(py::init<py::dict, py::dict>())
