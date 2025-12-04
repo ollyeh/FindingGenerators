@@ -41,6 +41,9 @@ namespace spd = spdlog;
 
 constexpr bool enable_debug_logging = false;
 
+constexpr bool permutator_update_delay = false;
+constexpr bool generator_finder_update_delay = false;
+
 unsigned long long binomial(unsigned n, unsigned k) {
     if (k > n) return 0;
     if (k > n - k) k = n - k;
@@ -70,6 +73,7 @@ class CellViewer {
     std::map<std::string, easy3d::vec3> m_unique_element_colors;
     easy3d::PointCloud m_atoms;
     std::shared_ptr<easy3d::PointCloud> m_atoms_shared_ptr;
+
 public:
     easy3d::Viewer viewer;
 
@@ -473,7 +477,6 @@ class AtomPermutator{
         spd::info("Swapping atoms");
         for (int i = 0; m_picked_swaps.size() < n_swaps; i++) {
             int temp = m_uniform_int_distribution(m_generator);
-            //std::cout << (m_picked_swaps.end() != std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) << std::endl;
             if (m_picked_swaps.end() == std::find(m_picked_swaps.begin(), m_picked_swaps.end(), temp)) {
                 m_picked_swaps.push_back(temp);
                 }
@@ -531,18 +534,16 @@ class AtomPermutator{
 
         int configuration_index = 0;
         do {
-            //std::this_thread::sleep_for(std::chrono::milliseconds(400));
+            if constexpr (permutator_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(400));}
 
              if (configuration_index%1000 == 0) {
                 spd::info("Permutation step {} / {} %", configuration_index, static_cast<float>(configuration_index)/static_cast<float>(m_n_configurations)*100);
             }
 
             update_m_structure_dict();
-            nlohmann::json configuration;
-            int atom_index = 0;
+            nlohmann::json configuration = nlohmann::json::array();
             for (auto &[key, val] : *m_ptr_structure_dict) {
-                configuration[std::to_string(atom_index)] = {{"element", val.first}, {"frac_coord", val.second}};
-                ++atom_index;
+                configuration.push_back({{"element", val.first}, {"frac_coord", val.second}});
             }
             root[std::to_string(configuration_index)] = configuration;
             #if GRAPHICS
@@ -598,6 +599,10 @@ class AtomPermutatorFramework {
 
     void dope_cell(int n_swaps, const std::string &element) {
         m_atom_permutator.dope_cell(n_swaps, element);
+    }
+
+    void display_cell() {
+        m_cell_viewer.open_viewer();
     }
 
     #if GRAPHICS
@@ -786,7 +791,11 @@ class VirusSimulatorFramework {
     void dope_cell(int n_swaps, const std::string &element) {
         m_virus_simulator.dope_cell(n_swaps, element);
     }
-#if GRAPHICS
+
+    void display_cell() {
+        m_cell_viewer.open_viewer();
+    }
+    #if GRAPHICS
     void run_simulation() {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
@@ -796,7 +805,7 @@ class VirusSimulatorFramework {
 
         //m_cell_operator.run_simulation();
     }
-#else
+    #else
     void run_simulation() {
         m_virus_simulator.run_simulation(nullptr);
     }
@@ -805,39 +814,50 @@ class VirusSimulatorFramework {
 
 class GeneratorFinder {
     // this natural beauty maps long strings of element labels to m_structure_dict's pointer
-    std::map<std::string, std::shared_ptr<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>> m_element_hash_to_ptr;
+    std::map<std::string, std::shared_ptr<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>> m_all_configs_element_hash_to_ptr;
+    std::map<std::string, std::shared_ptr<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>> m_ired_configs_element_hash_to_ptr;
     std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> *m_transformations_dict_ptr;
     std::map<std::string, int> m_position_hash_to_atom_index;
     std::map<int, std::pair<std::string, std::array<float, 3>>> *m_structure_dict_ptr;
     std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> m_picked_structure_dict;
     std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> m_working_structure_dict;
+    std::vector<std::string> m_generated_structure_hashes;
 
     std::vector<std::string> m_found_element_hashes = {};
 
     std::array<float, 3> m_center_frac_coord;
 
-    nlohmann::json m_json;
+    nlohmann::json m_all_configs_json;
+    nlohmann::json m_ired_configs_json;
+
+    const std::string *m_ired_configs_path_ptr;
+    std::string m_all_configs_path;
+    int m_frequency;
 
 
     public:
-    explicit GeneratorFinder(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, const std::string &path, std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> *transformations_dict_ptr) {
+    nlohmann::json root;
+
+    explicit GeneratorFinder(std::map<int, std::pair<std::string, std::array<float, 3>>> *structure_dict_ptr, const std::string &all_configs_path, std::map<int, std::pair<std::array<float, 3>, std::array<std::array<float, 3>, 3>>> *transformations_dict_ptr) {
         m_structure_dict_ptr = structure_dict_ptr;
         m_transformations_dict_ptr = transformations_dict_ptr;
-        read_parse_json(std::string(path));
-        build_element_hash_dict();
+        read_parse_json(std::string(all_configs_path), &m_all_configs_json);
+        build_element_hash_dict(&m_all_configs_json, &m_all_configs_element_hash_to_ptr);
+        this-> m_all_configs_path = all_configs_path;
+
 
         // initialize m_structure_dict with the first configuration so that the cell_viewer can initialize properly
-        *m_structure_dict_ptr = pop_last_column(m_element_hash_to_ptr[m_element_hash_to_ptr.begin()->first].get());
+        *m_structure_dict_ptr = pop_last_column(m_all_configs_element_hash_to_ptr[m_all_configs_element_hash_to_ptr.begin()->first].get());
         if (m_structure_dict_ptr->size() == 0) {
             throw(std::range_error("CellViewer cannot initialize properly as m_structure_dict has size 0. Error thrown in constructor of GeneratorFinder."));
         }
     }
 
-    void read_parse_json(std::string path) {
+    static void read_parse_json(std::string path, nlohmann::json *json_ptr) {
         // read the configuration json file whose path is "path_to_json"
         spd::info("Reading json file for parsing located at {}", path);
         std::ifstream json_file(path);
-        m_json = nlohmann::json::parse(json_file);
+        *json_ptr = nlohmann::json::parse(json_file);
         spd::info("Successfully parsed json");
     }
 
@@ -874,6 +894,15 @@ class GeneratorFinder {
         return element_hash;
     }
 
+    static std::string construct_element_hash(std::map<int, std::pair<std::string, std::array<float, 3>>> structure_dict) {
+        std::string element_hash;
+        for (auto &[key, val] : structure_dict) {
+            auto [element, frac_coord] = val;
+            element_hash += element;
+        }
+        return element_hash;
+    }
+
     void apply_transformations(CellViewer *cell_viewer_ptr) {
         spd::info("Applying {} transformations", m_transformations_dict_ptr->size());
         m_found_element_hashes = {};
@@ -886,8 +915,9 @@ class GeneratorFinder {
             cell_viewer_ptr->show_property_stats();
             cell_viewer_ptr->update_color_buffer();
             cell_viewer_ptr->viewer.update();
-            //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if (generator_finder_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(50));}
             #endif
+
             std::vector<std::string> new_position_hashes = {};
             m_working_structure_dict = m_picked_structure_dict;
             //spd::info("Before");
@@ -907,14 +937,11 @@ class GeneratorFinder {
                 spd::info("Transformation with key {} successful", transform_key);
             }
 
-            /*
+
             *m_structure_dict_ptr = pop_last_column(&m_working_structure_dict);
-            if constexpr (enable_debug_logging) {
-                spd::info("Showing transformed configuration!");
-            }
             cell_viewer_ptr->show_property_stats();
             cell_viewer_ptr->update_color_buffer();
-            cell_viewer_ptr->viewer.update(); */
+            cell_viewer_ptr->viewer.update();
 
             int idx = 0;
             for (const auto& new_position_hash : new_position_hashes) {
@@ -933,7 +960,7 @@ class GeneratorFinder {
             //if (true) {
                 m_found_element_hashes.emplace_back(constr_element_hash);
             }
-            //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (generator_finder_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(200));}
         }
     }
 
@@ -947,32 +974,51 @@ class GeneratorFinder {
     }
 
     void calculate_set_difference() {
-        for (auto found_element_hash : m_found_element_hashes) {
-            //spd::info("Element hash: {}", found_element_hash);
-            m_element_hash_to_ptr.erase(found_element_hash);
+        for (const auto& found_element_hash : m_found_element_hashes) {
+            m_all_configs_element_hash_to_ptr.erase(found_element_hash);
         }
         spd::info("Found element hashes: {}", m_found_element_hashes.size());
-        spd::info("Remaining element_hashes: {}", m_element_hash_to_ptr.size());
+        spd::info("Remaining element_hashes: {}", m_all_configs_element_hash_to_ptr.size());
     }
 
+    void check_reduction(CellViewer *cell_viewer_ptr) {
+        read_parse_json(m_all_configs_path, &m_all_configs_json);
+        build_element_hash_dict(&m_all_configs_json, &m_all_configs_element_hash_to_ptr);
+        read_parse_json(*m_ired_configs_path_ptr, &m_ired_configs_json);
+        build_element_hash_dict(&m_ired_configs_json, &m_ired_configs_element_hash_to_ptr);
 
-    void start_reduction(CellViewer *cell_viewer_ptr) {
-        bool x = true;
-        int h = 0;
-        do {
-            spd::info("Starting reduction");
-            // outer while element_hash_to_ptr.size() > 0 --> pick config
-            // pick_configuration
-            m_picked_structure_dict = *m_element_hash_to_ptr[m_element_hash_to_ptr.begin()->first];
+        for (auto &[element_hash, ptr] : m_ired_configs_element_hash_to_ptr) {
+            m_picked_structure_dict = *m_ired_configs_element_hash_to_ptr.at(element_hash);
             build_position_hash_to_atom_index();
             apply_transformations(cell_viewer_ptr);
             calculate_set_difference();
-            // calculate_set_difference();
-            x = false;
-            ++h;
-        //} while (x);
-        } while (!m_element_hash_to_ptr.empty());
-        spd::info("Finished reduction with {} found configurations", h);
+        }
+    }
+
+    void start_reduction(CellViewer *cell_viewer_ptr, const std::string *ired_configs_path_ptr) {
+        this-> m_ired_configs_path_ptr = ired_configs_path_ptr;
+        int configuration_index = 0;
+        spd::info("Starting reduction");
+        do {
+            m_picked_structure_dict = *m_all_configs_element_hash_to_ptr[m_all_configs_element_hash_to_ptr.begin()->first];
+
+            build_position_hash_to_atom_index();
+            apply_transformations(cell_viewer_ptr);
+            calculate_set_difference();
+
+            nlohmann::json configuration = nlohmann::json::array();
+            for (auto &[key, val] : pop_last_column(&m_picked_structure_dict)) {
+                configuration.push_back({{"element", val.first}, {"frac_coord", val.second}});
+            }
+            root[std::to_string(configuration_index)] = {{"configuration", configuration}, {"frequency", m_found_element_hashes.size()}};
+
+            ++configuration_index;
+        } while (!m_all_configs_element_hash_to_ptr.empty());
+        spd::info("Finished reduction with {} found configurations", configuration_index);
+        spd::info("Dumping configurations to json");
+        std::ofstream(*ired_configs_path_ptr) << root.dump(1);
+        spd::info("Checking reduction");
+        check_reduction(cell_viewer_ptr);
     }
 
     void calculate_center_frac_coord() {
@@ -980,10 +1026,9 @@ class GeneratorFinder {
         float y_temp = 0;
         float z_temp = 0;
         // check if all configurations have the same number of atoms, if not throw exception TO DO!!!!!!!
-        auto &first_config_structure_dict = m_element_hash_to_ptr.begin()->second;
+        auto &first_config_structure_dict = m_all_configs_element_hash_to_ptr.begin()->second;
         float size = first_config_structure_dict->size();
 
-        spd::info("Size: {}", size);
         for (auto &[key, val] : *first_config_structure_dict) {
             auto &[element, frac_coord, frac_coord_hash] = val;
             x_temp += frac_coord[0];
@@ -1004,9 +1049,9 @@ class GeneratorFinder {
         }
     }
 
-    void build_element_hash_dict() {
+    static void build_element_hash_dict(nlohmann::json *json, std::map<std::string, std::shared_ptr<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>> *element_hash_to_ptr) {
         int configuration_index = 0;
-        for (auto &configuration : m_json) {
+        for (auto &configuration : *json) {
             int atom_index = 0;
             std::string element_hash;
             std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>> structure_dict;
@@ -1023,7 +1068,7 @@ class GeneratorFinder {
                 ++atom_index;
             }
             auto structure_dict_ptr = std::make_shared<std::map<int, std::tuple<std::string, std::array<float, 3>, std::string>>>(structure_dict);
-            m_element_hash_to_ptr[element_hash] = structure_dict_ptr;
+            (*element_hash_to_ptr)[element_hash] = structure_dict_ptr;
             ++configuration_index;
         }
     }
@@ -1082,11 +1127,12 @@ class GeneratorFinderFramework {
         }
     }
     #if GRAPHICS
-    void start_reduction() {
+    void start_reduction(const std::string &path) {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
-        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr]() { this->m_generator_finder.start_reduction(m_cell_viewer_ptr); }));
+        results.emplace(thread_pool.AddTask([this, m_cell_viewer_ptr, &path]() { this->m_generator_finder.start_reduction(m_cell_viewer_ptr, &path); }));
         m_cell_viewer.open_viewer();
+        m_cell_viewer.close_viewer();
     }
     #else
     void start_reduction() {
@@ -1099,9 +1145,10 @@ void set_resource_path(const py::str& resource_path) {
     #if GRAPHICS
     easy3d::resource::initialize(std::string(resource_path));
     spd::info("Resource path initialized");
-    #else()
+    #else
     spd::info("Resource path does not exist. Compiled with GRAPHICS=OFF");
-    #endif
+    #endifls
+    c
 }
 
 PYBIND11_MODULE(finding_generators, m) {
@@ -1111,11 +1158,13 @@ PYBIND11_MODULE(finding_generators, m) {
     py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
     .def(py::init<py::dict, py::dict>())
     .def("dope_cell", &VirusSimulatorFramework::dope_cell)
+    .def("display_cell", &VirusSimulatorFramework::display_cell)
     .def("run_simulation", &VirusSimulatorFramework::run_simulation);
 
     py::class_<AtomPermutatorFramework>(m, "AtomPermutator")
     .def(py::init<py::dict>())
     .def("dope_cell", &AtomPermutatorFramework::dope_cell)
+    .def("display_cell", &AtomPermutatorFramework::display_cell)
     .def("run_permutation", &AtomPermutatorFramework::run_permutation);
 
     py::class_<GeneratorFinderFramework>(m, "GeneratorFinder")
