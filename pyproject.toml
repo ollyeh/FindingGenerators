@@ -21,6 +21,6 @@ dependencies = [
 ]
 
 [tool.scikit-build]
-cmake.source-dir = "FindingGenerators"
-wheel.packages = ["FindingGenerators"]
+cmake.source-dir = "finding_generators"
+wheel.packages = ["finding_generators"]
 cmake.verbose = true
