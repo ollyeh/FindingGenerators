@@ -60,26 +60,12 @@ set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
 	COMMAND ${CMAKE_COMMAND} -E copy_directory ${Easy3D_SOURCE_DIR}/resources ${CMAKE_SOURCE_DIR}/easy3d/resources
 	)
 
-get_target_property(util_definitions easy3d_util COMPILE_DEFINITIONS)
+#get_target_property(util_definitions easy3d_util INTERFACE_COMPILE_DEFINITIONS)
 
 
-	message(STATUS "Copying compile definitions from easy3d/util's CMakeLists.txt")
-set(new_util_definitions "")
-foreach(def ${util_definitions})
-		if (NOT def MATCHES "BUILD_INTERFACE:Easy3D_RESOURCE_DIR=")
-			list(APPEND new_util_definitions "${def}")
-			    message(STATUS "  - ${def}")
-else()
-				message(STATUS "Redefining compile definition  - ${def}")
-    endif()
-endforeach()
-
-set_target_properties(easy3d_util PROPERTIES
-    INTERFACE_COMPILE_DEFINITIONS "${new_util_definitions}"
-)
 	# fall back resource dir at compile time 
-	target_compile_definitions(easy3d_util PUBLIC
-	"$<BUILD_INTERFACE:Easy3D_RESOURCE_DIR=\"${CMAKE_SOURCE_DIR}/easy3d/resources\">")
+	#target_compile_definitions(easy3d_util PUBLIC
+	#"$<BUILD_INTERFACE:Easy3D_RESOURCE_DIR=\"${CMAKE_SOURCE_DIR}/easy3d/resources\">")
 
 	target_link_libraries(finding_generators
 	    PRIVATE
@@ -87,6 +73,7 @@ set_target_properties(easy3d_util PROPERTIES
             easy3d::renderer
             easy3d::viewer
             easy3d::gui
+			easy3d::util
     )
 	add_custom_command(
 	    TARGET finding_generators

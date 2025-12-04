@@ -23,6 +23,7 @@
 #include "easy3d/core/point_cloud.h"
 #include "easy3d/renderer/drawable_points.h"
 #include "easy3d/renderer/renderer.h"
+#include "easy3d/util/resource.h"
 #endif
 
 #include <queue>
@@ -1094,14 +1095,15 @@ class GeneratorFinderFramework {
     #endif
 };
 
-void set_resource_path(std::string &path) {
-	
+void set_resource_path(const py::str& resource_path) {
+    easy3d::resource::initialize(std::string(resource_path));
+    spd::info("Resource path initialized");
 }
 
 PYBIND11_MODULE(finding_generators, m) {
     m.doc() = "Python bindings for functions in Python";
     #if GRAPHICS
-        
+        m.def("set_resource_path", &set_resource_path);
     #endif
 
     py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
