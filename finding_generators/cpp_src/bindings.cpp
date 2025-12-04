@@ -1147,8 +1147,7 @@ void set_resource_path(const py::str& resource_path) {
     spd::info("Resource path initialized");
     #else
     spd::info("Resource path does not exist. Compiled with GRAPHICS=OFF");
-    #endifls
-    c
+    #endif
 }
 
 PYBIND11_MODULE(finding_generators, m) {
