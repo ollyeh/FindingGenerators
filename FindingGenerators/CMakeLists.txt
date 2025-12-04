@@ -39,6 +39,10 @@ add_custom_command(
 if (GRAPHICS)
     message(STATUS "Graphics enabled — building with Easy3D")
 	target_compile_definitions(finding_generators PUBLIC GRAPHICS=1)
+	set(Easy3D_BUILD_TUTORIALS OFF CACHE BOOL "" FORCE)
+set(Easy3D_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
+
     set(EASY3D_VERSION 2.6.1)
     FetchContent_Declare(
             easy3d
@@ -73,6 +77,7 @@ endforeach()
 set_target_properties(easy3d_util PROPERTIES
     INTERFACE_COMPILE_DEFINITIONS "${new_util_definitions}"
 )
+	# fall back resource dir at compile time 
 	target_compile_definitions(easy3d_util PUBLIC
 	"$<BUILD_INTERFACE:Easy3D_RESOURCE_DIR=\"${CMAKE_SOURCE_DIR}/easy3d/resources\">")
 

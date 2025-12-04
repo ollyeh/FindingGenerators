@@ -22,5 +22,6 @@ dependencies = [
 
 [tool.scikit-build]
 cmake.source-dir = "FindingGenerators"
-wheel.packages = ["FindingGenerators, *.dylib"]
+wheel.packages = ["FindingGenerators"]
 cmake.verbose = true
+build-isolation = false
