@@ -23,4 +23,8 @@ pip install -v . --config-settings cmake.args="-DGRAPHICS=OFF"
 
 ### For developers:
 
-SKBUILD_SKIP_BUILD=1 -v -e pip install . --config-settings cmake.args="-DGRAPHICS=ON/OFF"
+pip install -v -e . --config-settings cmake.args="-DGRAPHICS=ON"
+
+# Documentation
+see testing/full_run.py
+
