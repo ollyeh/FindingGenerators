@@ -967,7 +967,7 @@ class GeneratorFinder {
             }
             if (generator_finder_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(500));}
             #if GRAPHICS
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             #endif
         }
     }
