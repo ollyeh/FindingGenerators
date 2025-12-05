@@ -1019,7 +1019,6 @@ class GeneratorFinder {
                 configuration.push_back({{"element", val.first}, {"frac_coord", val.second}});
             }
             root[std::to_string(configuration_index)] = {{"configuration", configuration}, {"frequency", m_found_element_hashes.size()}};
-git
             ++configuration_index;
         } while (!m_all_configs_element_hash_to_ptr.empty());
         spd::info("Finished reduction with {} found configurations", configuration_index);
