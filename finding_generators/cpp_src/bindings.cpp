@@ -555,6 +555,8 @@ class AtomPermutator{
         spd::info("Done finding {} permutations", configuration_index);
         spd::info("Dumping configurations to json");
         std::ofstream(*path) << root.dump(1);
+        spd::info("Dumping done");
+
     }
 };
 
@@ -1017,12 +1019,13 @@ class GeneratorFinder {
                 configuration.push_back({{"element", val.first}, {"frac_coord", val.second}});
             }
             root[std::to_string(configuration_index)] = {{"configuration", configuration}, {"frequency", m_found_element_hashes.size()}};
-
+git
             ++configuration_index;
         } while (!m_all_configs_element_hash_to_ptr.empty());
         spd::info("Finished reduction with {} found configurations", configuration_index);
         spd::info("Dumping configurations to json");
         std::ofstream(*ired_configs_path_ptr) << root.dump(1);
+        spd::info("Dumping done");
         spd::info("Entering reduction check...");
         check_reduction(cell_viewer_ptr);
     }
