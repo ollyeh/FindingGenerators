@@ -25,6 +25,8 @@ pip install -v . --config-settings cmake.args="-DGRAPHICS=OFF"
 
 pip install -v -e . --config-settings cmake.args="-DGRAPHICS=ON"
 
+then build from finding_generators/CMakeLists.txt
+
 # Documentation
 see testing/full_run.py
 
