@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.28)
 project(FindingGenerators)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0)
@@ -19,8 +19,11 @@ pybind11_add_module(finding_generators_binding SHARED cpp_src/bindings.cpp)
 if(APPLE)
     set_target_properties(finding_generators_binding PROPERTIES
         INSTALL_RPATH "@loader_path/easy3d"
-        BUILD_RPATH "@loader_path/easy3d"
-    )
+        BUILD_RPATH "@loader_path/easy3d")
+elseif(UNIX)
+    set_target_properties(finding_generators_binding PROPERTIES
+	    INSTALL_RPATH "$ORIGIN/easy3d"
+	    BUILD_RPATH "$ORIGIN/easy3d")
 endif()
 execute_process(
         COMMAND ${Python3_EXECUTABLE} -m pybind11 --cmakedir
@@ -108,7 +111,7 @@ FetchContent_Declare(
         FIND_PACKAGE_ARGS ${SPDLOG_VERSION}
 )
 FetchContent_MakeAvailable(spdlog)
-
+set_property(TARGET spdlog PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(finding_generators_binding
         PUBLIC
         spdlog
