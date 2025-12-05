@@ -918,7 +918,7 @@ class GeneratorFinder {
             cell_viewer_ptr->show_property_stats();
             cell_viewer_ptr->update_color_buffer();
             cell_viewer_ptr->viewer.update();
-            if (generator_finder_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(50));}
+            if (generator_finder_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(200));}
             #endif
 
             std::vector<std::string> new_position_hashes = {};
@@ -965,7 +965,10 @@ class GeneratorFinder {
             //if (true) {
                 m_found_element_hashes.emplace_back(constr_element_hash);
             }
-            if (generator_finder_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(200));}
+            if (generator_finder_update_delay) {std::this_thread::sleep_for(std::chrono::milliseconds(500));}
+            #if GRAPHICS
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            #endif
         }
     }
 

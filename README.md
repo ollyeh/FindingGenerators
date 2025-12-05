@@ -1,12 +1,26 @@
 # Installation
-git clone https://github.com/ollyeh/FindingGenerators.git
-cd FindingGenerators
+##  Clone the repository:
 
+git clone https://github.com/ollyeh/FindingGenerators.git
+
+## Go inside of the cloned repository, create a python environment and activate it
+
+cd FindingGenerators
 python3.13 -m venv .venv
 source .venv/bin/activate
 
-For regular usage:
-pip install . --config-settings cmake.args="-DGRAPHICS=ON/OFF"
+## Use pip to install the package
 
-For development:
-pip install -v -e . --config-settings cmake.args="-DGRAPHICS=ON/OFF"
+### For users:
+With graphics:
+
+pip install -v . --config-settings cmake.args="-DGRAPHICS=ON"
+
+Without graphics:
+
+pip install -v . --config-settings cmake.args="-DGRAPHICS=OFF"
+
+
+### For developers:
+
+SKBUILD_SKIP_BUILD=1 -v -e pip install . --config-settings cmake.args="-DGRAPHICS=ON/OFF"
