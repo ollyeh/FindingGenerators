@@ -25,6 +25,8 @@ pip install -v . --config-settings cmake.args="-DGRAPHICS=OFF"
 
 pip install -v -e . --config-settings cmake.args="-DGRAPHICS=ON"
 
+if wanted: tweak compile time variables in finding_generators/cpp_src/bindings.cpp
+
 then build from finding_generators/CMakeLists.txt
 
 # Documentation
