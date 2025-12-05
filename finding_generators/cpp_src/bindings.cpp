@@ -1157,7 +1157,7 @@ void set_resource_path(const py::str& resource_path) {
     #endif
 }
 
-PYBIND11_MODULE(finding_generators, m) {
+PYBIND11_MODULE(finding_generators_binding, m) {
     m.doc() = "Python bindings for functions in Python";
     m.def("set_resource_path", &set_resource_path);
 
