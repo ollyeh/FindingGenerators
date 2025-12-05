@@ -1028,8 +1028,8 @@ class GeneratorFinder {
         spd::info("Dumping configurations to json");
         std::ofstream(*ired_configs_path_ptr) << root.dump(1);
         spd::info("Dumping done");
-        spd::info("Entering reduction check...");
-        check_reduction(cell_viewer_ptr);
+        //spd::info("Entering reduction check...");
+        //check_reduction(cell_viewer_ptr);
     }
 
     void calculate_center_frac_coord() {
