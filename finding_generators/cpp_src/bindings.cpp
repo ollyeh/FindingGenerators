@@ -53,7 +53,7 @@ unsigned long long binomial(unsigned n, unsigned k) {
         result = result * (n - (k - i));
         result /= i;
     }
-    return (unsigned long long) result;
+    return result;
 }
 
 #if GRAPHICS
@@ -449,7 +449,7 @@ class AtomPermutator{
     std::map<int, std::pair<std::string, std::array<float, 3>>> m_structure_dict_init;
     std::string m_element;
     std::vector<int> m_config;
-    int m_n_configurations{};
+    __uint128_t m_n_configurations{};
 
     public:
     std::vector<std::map<int, std::pair<std::string, std::array<float, 3>>>> configurations = {};
@@ -601,9 +601,11 @@ class AtomPermutatorFramework {
         m_atom_permutator.dope_cell(n_swaps, element);
     }
 
+#if GRAPHICS
     void display_cell() {
         m_cell_viewer.open_viewer();
     }
+#endif
 
     #if GRAPHICS
     void run_permutation(const std::string &path) {
@@ -791,11 +793,10 @@ class VirusSimulatorFramework {
     void dope_cell(int n_swaps, const std::string &element) {
         m_virus_simulator.dope_cell(n_swaps, element);
     }
-
+#if GRAPHICS
     void display_cell() {
         m_cell_viewer.open_viewer();
     }
-    #if GRAPHICS
     void run_simulation() {
         m_cell_viewer.initialize_viewer();
         auto m_cell_viewer_ptr = &m_cell_viewer;
@@ -939,9 +940,11 @@ class GeneratorFinder {
 
 
             *m_structure_dict_ptr = pop_last_column(&m_working_structure_dict);
+#if GRAPHICS
             cell_viewer_ptr->show_property_stats();
             cell_viewer_ptr->update_color_buffer();
             cell_viewer_ptr->viewer.update();
+#endif
 
             int idx = 0;
             for (const auto& new_position_hash : new_position_hashes) {
@@ -982,11 +985,14 @@ class GeneratorFinder {
     }
 
     void check_reduction(CellViewer *cell_viewer_ptr) {
+        spd::info("Reading set of all configurations");
         read_parse_json(m_all_configs_path, &m_all_configs_json);
         build_element_hash_dict(&m_all_configs_json, &m_all_configs_element_hash_to_ptr);
+        spd::info("Reading ireducible set of configurations");
         read_parse_json(*m_ired_configs_path_ptr, &m_ired_configs_json);
         build_element_hash_dict(&m_ired_configs_json, &m_ired_configs_element_hash_to_ptr);
 
+        spd::info("Iterating over irreducible set...");
         for (auto &[element_hash, ptr] : m_ired_configs_element_hash_to_ptr) {
             m_picked_structure_dict = *m_ired_configs_element_hash_to_ptr.at(element_hash);
             build_position_hash_to_atom_index();
@@ -1017,7 +1023,7 @@ class GeneratorFinder {
         spd::info("Finished reduction with {} found configurations", configuration_index);
         spd::info("Dumping configurations to json");
         std::ofstream(*ired_configs_path_ptr) << root.dump(1);
-        spd::info("Checking reduction");
+        spd::info("Entering reduction check...");
         check_reduction(cell_viewer_ptr);
     }
 
@@ -1126,6 +1132,7 @@ class GeneratorFinderFramework {
             }
         }
     }
+
     #if GRAPHICS
     void start_reduction(const std::string &path) {
         m_cell_viewer.initialize_viewer();
@@ -1135,8 +1142,8 @@ class GeneratorFinderFramework {
         m_cell_viewer.close_viewer();
     }
     #else
-    void start_reduction() {
-        m_generator_finder.start_reduction(nullptr);
+    void start_reduction(const std::string &path) {
+        m_generator_finder.start_reduction(nullptr, &path);
     }
     #endif
 };
@@ -1157,13 +1164,17 @@ PYBIND11_MODULE(finding_generators, m) {
     py::class_<VirusSimulatorFramework>(m, "VirusSimulator")
     .def(py::init<py::dict, py::dict>())
     .def("dope_cell", &VirusSimulatorFramework::dope_cell)
+#if GRAPHICS
     .def("display_cell", &VirusSimulatorFramework::display_cell)
+#endif
     .def("run_simulation", &VirusSimulatorFramework::run_simulation);
 
     py::class_<AtomPermutatorFramework>(m, "AtomPermutator")
     .def(py::init<py::dict>())
     .def("dope_cell", &AtomPermutatorFramework::dope_cell)
+#if GRAPHICS
     .def("display_cell", &AtomPermutatorFramework::display_cell)
+#endif
     .def("run_permutation", &AtomPermutatorFramework::run_permutation);
 
     py::class_<GeneratorFinderFramework>(m, "GeneratorFinder")

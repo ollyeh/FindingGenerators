@@ -7,6 +7,9 @@ from numpy.typing import NDArray
 import math
 from pymatgen.symmetry.groups import PointGroup, SpaceGroup
 
+from optparse import OptionParser
+import inspect
+
 class AtomPermutator:
     def __init__(self, input: str | Atoms, rescale_factors: tuple[int, int, int] = (1,1,1)):
         self.structure_dict: dict[int, dict[str, str | NDArray[float]]] = {}
@@ -19,6 +22,7 @@ class AtomPermutator:
             raise TypeError(f"Got {type(Atoms)} as input.")
 
         self.atom_permutator = fg.AtomPermutator(self.structure_dict)
+
 
     def prepare_structure_from_str(self, cif_path: str, rescale_factors: tuple[int, int, int]) -> None:
         structure = CifParser(cif_path).parse_structures(primitive=False)[0]*rescale_factors
@@ -43,6 +47,8 @@ class AtomPermutator:
 
     def run_permutation(self, all_configurations_path: str):
         self.atom_permutator.run_permutation(all_configurations_path)
+        # after this we do not need the permutator anymore -> delete it by overwriting
+        self.atom_permutator = None
 
 class GeneratorFinder:
     def __init__(self, all_configurations_path: str, space_group: str):
@@ -55,14 +61,17 @@ class GeneratorFinder:
         for i, op in enumerate(sg.symmetry_ops):
             transformations_dict[i] = {"trans": op.translation_vector, "rot": op.rotation_matrix}
 
-
         self.generator_finder = fg.GeneratorFinder(all_configurations_path, transformations_dict)
 
     def start_reduction(self, ired_configurations_path: str):
         self.generator_finder.start_reduction(ired_configurations_path)
+        # after this we do not need the finder anymore -> delete it by overwriting
+        self.generator_finder = None
+
 
 if __name__ == "__main__":
     ap = AtomPermutator("rocksalt_alnit.cif", (2,2,2))
-    ap.dope_cell(2, "Sc")
+    ap.dope_cell(5, "Mo")
     ap.run_permutation("all_configurations.json")
     gf = GeneratorFinder("all_configurations.json", "Fm-3m")
+    gf.start_reduction("ired_configurations.json")
