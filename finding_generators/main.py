@@ -1,4 +1,4 @@
-import finding_generators as fg
+import finding_generators.finding_generators_binding as fg
 import typing
 from ase import Atoms
 from pymatgen.io.cif import CifParser
@@ -6,9 +6,6 @@ import numpy as np
 from numpy.typing import NDArray
 import math
 from pymatgen.symmetry.groups import PointGroup, SpaceGroup
-
-from optparse import OptionParser
-import inspect
 
 class AtomPermutator:
     def __init__(self, input: str | Atoms, rescale_factors: tuple[int, int, int] = (1,1,1)):
@@ -19,7 +16,7 @@ class AtomPermutator:
         elif isinstance(input, Atoms):
             raise NotImplementedError("Implementation is coming soon. Stick to using a cif file.")
         else:
-            raise TypeError(f"Got {type(Atoms)} as input.")
+            raise TypeError(f"Got {type(input)} as input.")
 
         self.atom_permutator = fg.AtomPermutator(self.structure_dict)
 
@@ -67,11 +64,3 @@ class GeneratorFinder:
         self.generator_finder.start_reduction(ired_configurations_path)
         # after this we do not need the finder anymore -> delete it by overwriting
         self.generator_finder = None
-
-
-if __name__ == "__main__":
-    ap = AtomPermutator("rocksalt_alnit.cif", (2,2,2))
-    ap.dope_cell(5, "Mo")
-    ap.run_permutation("all_configurations.json")
-    gf = GeneratorFinder("all_configurations.json", "Fm-3m")
-    gf.start_reduction("ired_configurations.json")

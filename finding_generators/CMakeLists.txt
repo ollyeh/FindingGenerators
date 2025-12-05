@@ -15,9 +15,9 @@ FetchContent_MakeAvailable(pybind11)
 
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-pybind11_add_module(finding_generators SHARED cpp_src/bindings.cpp)
+pybind11_add_module(finding_generators_binding SHARED cpp_src/bindings.cpp)
 if(APPLE)
-    set_target_properties(finding_generators PROPERTIES
+    set_target_properties(finding_generators_binding PROPERTIES
         INSTALL_RPATH "@loader_path/easy3d"
         BUILD_RPATH "@loader_path/easy3d"
     )
@@ -29,16 +29,16 @@ execute_process(
 )
 
 add_custom_command(
-        TARGET finding_generators
+        TARGET finding_generators_binding
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:finding_generators>
+        $<TARGET_FILE:finding_generators_binding>
         ${CMAKE_SOURCE_DIR}
 )
 if (GRAPHICS)
     message(STATUS "Graphics enabled — building with Easy3D")
-	target_compile_definitions(finding_generators PUBLIC GRAPHICS=1)
+	target_compile_definitions(finding_generators_binding PUBLIC GRAPHICS=1)
 	set(Easy3D_BUILD_TUTORIALS OFF CACHE BOOL "" FORCE)
 set(Easy3D_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
@@ -54,7 +54,7 @@ set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
     set(Easy3D_BUILD_TUTORIALS OFF CACHE BOOL "Disable tutorials" FORCE)
 	set(Easy3D_BUILD_TESTS OFF CACHE BOOL "Disable tests" FORCE)
 	add_custom_command(
-	TARGET finding_generators
+	TARGET finding_generators_binding
 	PRE_BUILD
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/easy3d
 	COMMAND ${CMAKE_COMMAND} -E copy_directory ${Easy3D_SOURCE_DIR}/resources ${CMAKE_SOURCE_DIR}/easy3d/resources
@@ -67,7 +67,7 @@ set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
 	#target_compile_definitions(easy3d_util PUBLIC
 	#"$<BUILD_INTERFACE:Easy3D_RESOURCE_DIR=\"${CMAKE_SOURCE_DIR}/easy3d/resources\">")
 
-	target_link_libraries(finding_generators
+	target_link_libraries(finding_generators_binding
 	    PRIVATE
             easy3d::core
             easy3d::renderer
@@ -76,7 +76,7 @@ set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
 			easy3d::util
     )
 	add_custom_command(
-	    TARGET finding_generators
+	    TARGET finding_generators_binding
 	    POST_BUILD
 	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::core>      ${CMAKE_SOURCE_DIR}/easy3d
 	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::renderer>  ${CMAKE_SOURCE_DIR}/easy3d
@@ -97,7 +97,7 @@ set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
 	)
 else()
     message(STATUS "Graphics disabled — building WITHOUT Easy3D")
-    target_compile_definitions(finding_generators PRIVATE GRAPHICS=0)
+    target_compile_definitions(finding_generators_binding PRIVATE GRAPHICS=0)
 endif()
 
 set(SPDLOG_VERSION 1.16.0)
@@ -109,7 +109,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
-target_link_libraries(finding_generators
+target_link_libraries(finding_generators_binding
         PUBLIC
         spdlog
 )
@@ -123,7 +123,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
-target_link_libraries(finding_generators
+target_link_libraries(finding_generators_binding
         PUBLIC
         nlohmann_json::nlohmann_json
 )
