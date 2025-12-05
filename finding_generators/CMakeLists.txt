@@ -16,15 +16,17 @@ FetchContent_MakeAvailable(pybind11)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 pybind11_add_module(finding_generators_binding SHARED cpp_src/bindings.cpp)
+
 if(APPLE)
     set_target_properties(finding_generators_binding PROPERTIES
-        INSTALL_RPATH "@loader_path/easy3d"
+	INSTALL_RPATH "@loader_path/easy3d"
         BUILD_RPATH "@loader_path/easy3d")
 elseif(UNIX)
     set_target_properties(finding_generators_binding PROPERTIES
-	    INSTALL_RPATH "$ORIGIN/easy3d"
-	    BUILD_RPATH "$ORIGIN/easy3d")
+	INSTALL_RPATH "$ORIGIN/easy3d"
+	BUILD_RPATH "$ORIGIN/easy3d")
 endif()
+
 execute_process(
         COMMAND ${Python3_EXECUTABLE} -m pybind11 --cmakedir
         OUTPUT_VARIABLE PYBIND11_CMAKE_DIR
@@ -39,65 +41,54 @@ add_custom_command(
         $<TARGET_FILE:finding_generators_binding>
         ${CMAKE_SOURCE_DIR}
 )
+
 if (GRAPHICS)
-    message(STATUS "Graphics enabled — building with Easy3D")
+	message(STATUS "Graphics enabled — building with Easy3D")
 	target_compile_definitions(finding_generators_binding PUBLIC GRAPHICS=1)
 	set(Easy3D_BUILD_TUTORIALS OFF CACHE BOOL "" FORCE)
-set(Easy3D_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
+	set(Easy3D_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+	set(Easy3D_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
 
-    set(EASY3D_VERSION 2.6.1)
-    FetchContent_Declare(
-            easy3d
-            GIT_REPOSITORY https://github.com/LiangliangNan/Easy3D.git
-            GIT_TAG main
-            FIND_PACKAGE_ARGS ${EASY3D_VERSION}
-    )
-    FetchContent_MakeAvailable(easy3d)
-    set(Easy3D_BUILD_TUTORIALS OFF CACHE BOOL "Disable tutorials" FORCE)
+	set(EASY3D_VERSION 2.6.1)
+	FetchContent_Declare(
+		easy3d
+        	GIT_REPOSITORY https://github.com/LiangliangNan/Easy3D.git
+        	GIT_TAG main
+        	FIND_PACKAGE_ARGS ${EASY3D_VERSION}
+    		)
+    	FetchContent_MakeAvailable(easy3d)
+    	set(Easy3D_BUILD_TUTORIALS OFF CACHE BOOL "Disable tutorials" FORCE)
 	set(Easy3D_BUILD_TESTS OFF CACHE BOOL "Disable tests" FORCE)
 	add_custom_command(
-	TARGET finding_generators_binding
-	PRE_BUILD
-	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/easy3d
-	COMMAND ${CMAKE_COMMAND} -E copy_directory ${Easy3D_SOURCE_DIR}/resources ${CMAKE_SOURCE_DIR}/easy3d/resources
-	)
-
-#get_target_property(util_definitions easy3d_util INTERFACE_COMPILE_DEFINITIONS)
-
-
-	# fall back resource dir at compile time 
-	#target_compile_definitions(easy3d_util PUBLIC
-	#"$<BUILD_INTERFACE:Easy3D_RESOURCE_DIR=\"${CMAKE_SOURCE_DIR}/easy3d/resources\">")
-
+		TARGET finding_generators_binding
+		PRE_BUILD
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/easy3d
+		COMMAND ${CMAKE_COMMAND} -E copy_directory ${Easy3D_SOURCE_DIR}/resources ${CMAKE_SOURCE_DIR}/easy3d/resources
+		)
 	target_link_libraries(finding_generators_binding
-	    PRIVATE
-            easy3d::core
-            easy3d::renderer
-            easy3d::viewer
-            easy3d::gui
-			easy3d::util
-    )
-	add_custom_command(
-	    TARGET finding_generators_binding
-	    POST_BUILD
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::core>      ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::renderer>  ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::viewer>    ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::gui>       ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::fileio>       ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::algo>       ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::kdtree>       ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::util>       ${CMAKE_SOURCE_DIR}/easy3d
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::core>      ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_core.2.dylib
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::renderer>  ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_renderer.2.dylib
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::viewer>    ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_viewer.2.dylib
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::gui>       ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_gui.2.dylib
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::fileio>       ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_fileio.2.dylib
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::algo>       ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_algo.2.dylib
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::kdtree>       ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_kdtree.2.dylib
-	    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::util>       ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_util.2.dylib
-	)
+		PRIVATE
+        	easy3d::core
+            	easy3d::renderer
+            	easy3d::viewer
+            	easy3d::gui
+		easy3d::util
+    		)
+	set(NAMELIST "core;renderer;viewer;gui;fileio;algo;kdtree;util")
+	if (APPLE)
+		message(STATUS " - Symlinks for APPLE ")
+	foreach(name IN LISTS NAMELIST)
+		add_custom_command(
+			TARGET finding_generators_binding
+	    		POST_BUILD
+	    		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::${name}> ${CMAKE_SOURCE_DIR}/easy3d
+			COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::${name}>    ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_${name}.2.dylib
+			)
+	endforeach()
+	elseif(UNIX)
+		message(STATUS " - Symlinks for UNIX ")
+	else()
+		message(STATUS " - Symlinks for else ")
+	endif()
 else()
     message(STATUS "Graphics disabled — building WITHOUT Easy3D")
     target_compile_definitions(finding_generators_binding PRIVATE GRAPHICS=0)
