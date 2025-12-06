@@ -86,6 +86,14 @@ if (GRAPHICS)
 	endforeach()
 	elseif(UNIX)
 		message(STATUS " - Symlinks for UNIX ")
+	foreach(name IN LISTS NAMELIST)
+		add_custom_command(
+			TARGET finding_generators_binding
+	    		POST_BUILD
+	    		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:easy3d::${name}> ${CMAKE_SOURCE_DIR}/easy3d
+			COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:easy3d::${name}>    ${CMAKE_SOURCE_DIR}/easy3d/libeasy3d_${name}.so.2
+			)
+	endforeach()
 	else()
 		message(STATUS " - Symlinks for else ")
 	endif()
