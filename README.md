@@ -1,7 +1,7 @@
 # Installation
 ##  Clone the repository:
 
-git clone https://github.com/ollyeh/FindingGenerators.git
+git clone -b release https://github.com/ollyeh/FindingGenerators.git
 
 ## Go inside of the cloned repository, create a python environment and activate it
 
@@ -31,4 +31,5 @@ then build from finding_generators/CMakeLists.txt
 
 # Documentation
 see testing/full_run.py
+
 
