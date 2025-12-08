@@ -54,7 +54,7 @@ class GeneratorFinder:
                 raise TypeError(f"Need json object.")
 
         transformations_dict = {}
-        sg = SpaceGroup("Fm-3m")
+        sg = SpaceGroup(space_group)
         for i, op in enumerate(sg.symmetry_ops):
             transformations_dict[i] = {"trans": op.translation_vector, "rot": op.rotation_matrix}
 
