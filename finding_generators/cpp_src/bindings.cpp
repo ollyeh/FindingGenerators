@@ -497,7 +497,7 @@ class GeneratorFinder {
                 auto &[element, frac_coord, frac_coord_hash] = val;
                 apply_transformation(&transform_val.first, &transform_val.second, &frac_coord);
                 // directly append transform new position to hash and emplace back
-                std::string position_hash = std::format("[{:.7f},{:.7f},{:.7f}]", frac_coord[0], frac_coord[1], frac_coord[2]);
+                std::string position_hash = std::format("[{:.4f},{:.4f},{:.4f}]", frac_coord[0], frac_coord[1], frac_coord[2]);
                 new_position_hashes.emplace_back(position_hash);
 
                 //spd::info("Position hash: {}", position_hash);
@@ -641,7 +641,7 @@ class GeneratorFinder {
                 auto frac_coord = static_cast<std::array<float, 3>>(atom.at("frac_coord"));
                 //auto frac_coord_hash = static_cast<std::string>(atom.at("frac_coord"));
                 //std::string frac_coord_hash = "["+std::to_string(frac_coord[0])+","+std::to_string(frac_coord[1])+","+std::to_string(frac_coord[2])+"]";
-                std::string frac_coord_hash = std::format("[{:.7f},{:.7f},{:.7f}]", frac_coord[0], frac_coord[1], frac_coord[2]);
+                std::string frac_coord_hash = std::format("[{:.4f},{:.4f},{:.4f}]", frac_coord[0], frac_coord[1], frac_coord[2]);
                 //spd::info(frac_coord_hash);
                 structure_dict[atom_index] = std::make_tuple(element, frac_coord, frac_coord_hash);
                 ++atom_index;
