@@ -3,6 +3,7 @@
 
 git clone https://github.com/ollyeh/FindingGenerators.git
 
+## Python environment
 Go inside of the cloned repository, create a python environment and activate it
 
 cd FindingGenerators
@@ -31,5 +32,6 @@ then build from finding_generators/CMakeLists.txt
 
 # Documentation
 see testing/full_run.py
+
 
 
